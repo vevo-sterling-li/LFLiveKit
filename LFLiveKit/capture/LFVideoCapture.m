@@ -204,14 +204,14 @@
     return _zoomScale;
 }
 
-- (void)setWarterMarkView:(UIView *)warterMarkView{
-    if(_warterMarkView && _warterMarkView.superview){
-        [_warterMarkView removeFromSuperview];
-        _warterMarkView = nil;
+- (void)setWatermarkView:(UIView *)watermarkView{
+    if(_watermarkView && _watermarkView.superview){
+        [_watermarkView removeFromSuperview];
+        _watermarkView = nil;
     }
-    _warterMarkView = warterMarkView;
-    self.blendFilter.mix = warterMarkView.alpha;
-    [self.waterMarkContentView addSubview:_warterMarkView];
+    _watermarkView = watermarkView;
+    self.blendFilter.mix = watermarkView.alpha;
+    [self.waterMarkContentView addSubview:_watermarkView];
     [self reloadFilter];
 }
 
@@ -311,7 +311,7 @@
     }
     
     //< 添加水印
-    if(self.warterMarkView){
+    if(self.watermarkView){
         [self.filter addTarget:self.blendFilter];
         [self.uiElementInput addTarget:self.blendFilter];
         [self.blendFilter addTarget:self.gpuImageView];

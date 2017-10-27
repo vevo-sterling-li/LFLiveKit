@@ -237,6 +237,9 @@
         _waterMarkContentView.frame = CGRectMake(0, 0, self.configuration.videoSize.width, self.configuration.videoSize.height);
         _waterMarkContentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     }
+    
+    _waterMarkContentView.frame = [[UIScreen mainScreen] bounds];
+    
     return _waterMarkContentView;
 }
 
@@ -300,7 +303,7 @@
     ///< 调节镜像
     [self reloadMirror];
     
-    //< 480*640 比例为4:3  强制转换为16:9
+    // 480*640 比例为4:3  强制转换为16:9
     if([self.configuration.avSessionPreset isEqualToString:AVCaptureSessionPreset640x480]){
         CGRect cropRect = self.configuration.landscape ? CGRectMake(0, 0.125, 1, 0.75) : CGRectMake(0.125, 0, 0.75, 1);
         self.cropfilter = [[GPUImageCropFilter alloc] initWithCropRegion:cropRect];
@@ -310,13 +313,15 @@
         [self.videoCamera addTarget:self.filter];
     }
     
-    //< 添加水印
+    // 添加水印
     if(self.watermarkView){
         [self.filter addTarget:self.blendFilter];
         [self.uiElementInput addTarget:self.blendFilter];
-        [self.blendFilter addTarget:self.gpuImageView];
+//        [self.blendFilter addTarget:self.gpuImageView];
         if(self.saveLocalVideo) [self.blendFilter addTarget:self.movieWriter];
-        [self.filter addTarget:self.output];
+//        [self.filter addTarget:self.output];
+        [self.blendFilter addTarget:self.output];
+        [self.filter addTarget:self.gpuImageView];
         [self.uiElementInput update];
     }else{
         [self.filter addTarget:self.output];

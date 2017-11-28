@@ -27,7 +27,7 @@
 @property (nonatomic, strong) GPUImageOutput<GPUImageInput> *output;
 @property (nonatomic, strong) GPUImageView *gpuImageView;
 @property (nonatomic, strong) LFLiveVideoConfiguration *configuration;
-
+@property (nonatomic, strong) GPUImageFilter *flipFilter;
 @property (nonatomic, strong) GPUImageAlphaBlendFilter *blendFilter;
 @property (nonatomic, strong) GPUImageUIElement *uiElementInput;
 @property (nonatomic, strong) UIView *waterMarkContentView;
@@ -114,6 +114,7 @@
     [self.videoCamera rotateCamera];
     self.videoCamera.frameRate = (int32_t)_configuration.videoFrameRate;
     [self reloadMirror];
+    [self reloadFilter];
 }
 
 - (AVCaptureDevicePosition)captureDevicePosition {
@@ -131,7 +132,7 @@
 }
 
 - (void)setTorch:(BOOL)torch {
-    BOOL ret;
+    BOOL ret = NO;
     if (!self.videoCamera.captureSession) return;
     AVCaptureSession *session = (AVCaptureSession *)self.videoCamera.captureSession;
     [session beginConfiguration];
@@ -289,6 +290,7 @@
     [self.videoCamera removeAllTargets];
     [self.output removeAllTargets];
     [self.cropfilter removeAllTargets];
+    [self.flipFilter removeAllTargets];
     
     if (self.beautyFace) {
         self.output = [[LFGPUImageEmptyFilter alloc] init];
@@ -300,7 +302,14 @@
         self.beautyFilter = nil;
     }
     
-    ///< 调节镜像
+    if (!self.flipFilter) {
+        self.flipFilter = [[GPUImageFilter alloc] init];
+    }
+    
+    [_flipFilter setInputRotation:kGPUImageFlipHorizonal atIndex:0];
+
+    
+    /// 调节镜像
     [self reloadMirror];
     
     // 480*640 比例为4:3  强制转换为16:9
@@ -313,30 +322,45 @@
         [self.videoCamera addTarget:self.filter];
     }
     
+    
     // 添加水印
-    if(self.watermarkView){
+    if (self.watermarkView) {
         [self.filter addTarget:self.blendFilter];
         [self.uiElementInput addTarget:self.blendFilter];
-//        [self.blendFilter addTarget:self.gpuImageView];
         if(self.saveLocalVideo) [self.blendFilter addTarget:self.movieWriter];
-//        [self.filter addTarget:self.output];
+        
+        // We should flip the facetime video horizontally
+        if ([self shouldFlipHorizontally]) {
+            [self.blendFilter setInputRotation:kGPUImageFlipHorizonal atIndex:0];
+        }
+        
         [self.blendFilter addTarget:self.output];
         [self.filter addTarget:self.gpuImageView];
         [self.uiElementInput update];
-    }else{
-        [self.filter addTarget:self.output];
-        [self.output addTarget:self.gpuImageView];
+    } else {
+        // We should flip the facetime video horizontally
+        if ([self shouldFlipHorizontally]) {
+            [self.filter addTarget:self.flipFilter];
+            [self.flipFilter addTarget:self.output];
+        } else {
+            [self.filter addTarget:self.output];
+        }
+
+        [self.filter addTarget:self.gpuImageView];
+
         if(self.saveLocalVideo) [self.output addTarget:self.movieWriter];
     }
+    
     
     [self.filter forceProcessingAtSize:self.configuration.videoSize];
     [self.output forceProcessingAtSize:self.configuration.videoSize];
     [self.blendFilter forceProcessingAtSize:self.configuration.videoSize];
     [self.uiElementInput forceProcessingAtSize:self.configuration.videoSize];
+    [self.flipFilter forceProcessingAtSize:self.configuration.videoSize];
     
-    
-    //< 输出数据
+    // 输出数据
     __weak typeof(self) _self = self;
+    
     [self.output setFrameProcessingCompletionBlock:^(GPUImageOutput *output, CMTime time) {
         [_self processVideo:output];
     }];
@@ -344,11 +368,15 @@
 }
 
 - (void)reloadMirror{
-    if(self.mirror && self.captureDevicePosition == AVCaptureDevicePositionFront){
+    if([self shouldFlipHorizontally]){
         self.videoCamera.horizontallyMirrorFrontFacingCamera = YES;
     }else{
         self.videoCamera.horizontallyMirrorFrontFacingCamera = NO;
     }
+}
+
+- (BOOL)shouldFlipHorizontally {
+    return self.mirror && self.captureDevicePosition == AVCaptureDevicePositionFront;
 }
 
 #pragma mark Notification

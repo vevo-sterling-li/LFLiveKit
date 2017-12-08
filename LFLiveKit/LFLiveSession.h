@@ -130,6 +130,11 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 /* The disable rtmp reconnect */
 @property (nonatomic, assign) BOOL disableRetry;
 
+/// 音频配置
+@property (readonly, nonatomic, strong) LFLiveAudioConfiguration *audioConfiguration;
+/// 视频配置
+@property (readonly, nonatomic, strong) LFLiveVideoConfiguration *videoConfiguration;
+
 #pragma mark - Initializer
 ///=============================================================================
 /// @name Initializer

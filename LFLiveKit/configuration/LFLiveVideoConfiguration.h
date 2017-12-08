@@ -46,12 +46,14 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 @interface LFLiveVideoConfiguration : NSObject<NSCoding, NSCopying>
 
 /// 默认视频配置
-+ (instancetype)defaultConfiguration;
++ (nullable instancetype)defaultConfiguration;
 /// 视频配置(质量)
-+ (instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality;
++ (nullable instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality;
 
 /// 视频配置(质量 & 是否是横屏)
-+ (instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality outputImageOrientation:(UIInterfaceOrientation)outputImageOrientation;
++ (nullable instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality outputImageOrientation:(UIInterfaceOrientation)outputImageOrientation;
+
+- (void)updateConfigurationBasedOnVideoQuality:(LFLiveVideoQuality)videoQuality;
 
 #pragma mark - Attribute
 ///=============================================================================
@@ -94,10 +96,12 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 @property (nonatomic, assign) LFLiveVideoSessionPreset sessionPreset;
 
 ///< ≈sde3分辨率
-@property (nonatomic, assign, readonly) NSString *avSessionPreset;
+@property (nonatomic, assign, readonly, nonnull) NSString *avSessionPreset;
 
 ///< 是否是横屏
 @property (nonatomic, assign, readonly) BOOL landscape;
+
+@property (nonatomic, assign) LFLiveVideoQuality videoQuality;
 
 - (void)refreshVideoSize;
 

@@ -127,6 +127,9 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 /* The saveLocalVideoPath is save the local video  path */
 @property (nonatomic, strong, nullable) NSURL *saveLocalVideoPath;
 
+/* The disable rtmp reconnect */
+@property (nonatomic, assign) BOOL disableRetry;
+
 #pragma mark - Initializer
 ///=============================================================================
 /// @name Initializer

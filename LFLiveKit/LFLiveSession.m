@@ -398,7 +398,7 @@
 
 - (id<LFStreamSocket>)socket {
     if (!_socket) {
-        _socket = [[LFStreamRTMPSocket alloc] initWithStream:self.streamInfo reconnectInterval:self.reconnectInterval reconnectCount:self.reconnectCount];
+        _socket = [[LFStreamRTMPSocket alloc] initWithStream:self.streamInfo reconnectInterval:self.reconnectInterval reconnectCount:self.reconnectCount disableRetry:self.disableRetry];
         [_socket setDelegate:self];
     }
     return _socket;

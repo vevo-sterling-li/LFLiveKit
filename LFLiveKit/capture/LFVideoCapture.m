@@ -380,9 +380,10 @@
         }
         
         [self.blendFilter addTarget:self.output];
-        
-        [self.filter addTarget:self.gpuImageView];
-        
+      
+//        [self.filter addTarget:self.gpuImageView];
+        [self.blendFilter addTarget:self.gpuImageView];
+
         [self.uiElementInput update];
     } else {
         // We should flip the facetime video horizontally

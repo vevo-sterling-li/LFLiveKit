@@ -79,14 +79,24 @@ SAVC(mp4a);
 }
 
 - (nullable instancetype)initWithStream:(nullable LFLiveStreamInfo *)stream reconnectInterval:(NSInteger)reconnectInterval reconnectCount:(NSInteger)reconnectCount{
+    return [self initWithStream:stream reconnectInterval:reconnectInterval reconnectCount:reconnectCount disableRetry:NO];
+}
+
+- (nullable instancetype)initWithStream:(nullable LFLiveStreamInfo *)stream reconnectInterval:(NSInteger)reconnectInterval reconnectCount:(NSInteger)reconnectCount disableRetry:(BOOL) disableRetry{
     if (!stream) @throw [NSException exceptionWithName:@"LFStreamRtmpSocket init error" reason:@"stream is nil" userInfo:nil];
     if (self = [super init]) {
         _stream = stream;
-        if (reconnectInterval > 0) _reconnectInterval = reconnectInterval;
-        else _reconnectInterval = RetryTimesMargin;
         
-        if (reconnectCount > 0) _reconnectCount = reconnectCount;
-        else _reconnectCount = RetryTimesBreaken;
+        if (disableRetry) {
+            _reconnectInterval = 0;
+            _reconnectCount = 0;
+        }else {
+            if (reconnectInterval > 0) _reconnectInterval = reconnectInterval;
+            else _reconnectInterval = RetryTimesMargin;
+            
+            if (reconnectCount > 0) _reconnectCount = reconnectCount;
+            else _reconnectCount = RetryTimesBreaken;
+        }
         
         [self addObserver:self forKeyPath:@"isSending" options:NSKeyValueObservingOptionNew context:nil];//这里改成observer主要考虑一直到发送出错情况下，可以继续发送
     }

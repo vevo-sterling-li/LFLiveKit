@@ -69,7 +69,11 @@ void setColorConversion709( GLfloat conversionMatrix[9] );
 @property(readonly) AVCaptureDevice *inputCamera;
 
 /// This determines the rotation applied to the output image, based on the source material
+//JK: here's the rub -- what the heck is the source material?? In the camea implementation, they use a default output connection on the capture session, which means, I think, landscapeLeft, so their so-called support for 'horizontal vertical recording' I think means they allow for a default landscape orientation video to be converted to a portrait (with asepct fill!).  But allowing the source to be portrait is not possible. (Even tho that's not what we want, per se; we want a preview in portrait so we don't have to roll the UIOrientation)
 @property(readwrite, nonatomic) UIInterfaceOrientation outputImageOrientation;
+
+///NOPE: the preView will show the AVCaptureSession's AVCaptureVideoPreviewLayer in portrait orientation
+@property (nonatomic, strong, nullable) UIView *preView;
 
 /// These properties determine whether or not the two camera orientations should be mirrored. By default, both are NO.
 @property(readwrite, nonatomic) BOOL horizontallyMirrorFrontFacingCamera, horizontallyMirrorRearFacingCamera;
@@ -152,5 +156,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] );
 
 + (BOOL)isBackFacingCameraPresent;
 + (BOOL)isFrontFacingCameraPresent;
+
+-(void)addCaptureVideoPreviewLayerTo:(UIView*)preView;
 
 @end

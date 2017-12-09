@@ -31,6 +31,7 @@
 @property (nonatomic, strong) GPUImageAlphaBlendFilter *blendFilter;
 @property (nonatomic, strong) GPUImageUIElement *uiElementInput;
 @property (nonatomic, strong) UIView *waterMarkContentView;
+@property (nonatomic, assign) AVCaptureVideoOrientation capturePreviewVideoOrientation;
 
 @property (nonatomic, strong) GPUImageMovieWriter *movieWriter;
 
@@ -41,6 +42,8 @@
 @synthesize beautyLevel = _beautyLevel;
 @synthesize brightLevel = _brightLevel;
 @synthesize zoomScale = _zoomScale;
+@synthesize preView = _preView;
+
 
 #pragma mark -- LifeCycle
 - (instancetype)initWithVideoConfiguration:(LFLiveVideoConfiguration *)configuration {
@@ -49,13 +52,39 @@
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willEnterBackground:) name:UIApplicationWillResignActiveNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willEnterForeground:) name:UIApplicationDidBecomeActiveNotification object:nil];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusBarChanged:) name:UIApplicationDidChangeStatusBarOrientationNotification object:nil];
+//        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusBarChanged:) name:UIApplicationDidChangeStatusBarOrientationNotification object:nil];
         
         self.beautyFace = YES;
         self.beautyLevel = 0.5;
         self.brightLevel = 0.5;
         self.zoomScale = 1.0;
         self.mirror = YES;
+        
+        //set capture preview video orientation to match configuration
+        switch (configuration.outputImageOrientation) {
+            case UIInterfaceOrientationPortrait:
+                self.capturePreviewVideoOrientation = AVCaptureVideoOrientationPortrait;
+                break;
+            case UIInterfaceOrientationLandscapeLeft:
+                self.capturePreviewVideoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+                break;
+            case UIInterfaceOrientationLandscapeRight:
+                self.capturePreviewVideoOrientation = AVCaptureVideoOrientationLandscapeRight;
+                break;
+            case UIInterfaceOrientationPortraitUpsideDown:
+                self.capturePreviewVideoOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
+                break;
+            default:
+                //TODO: only other interface orientation option is unknown, and it better not be that!
+                break;
+        }
+    }
+    return self;
+}
+
+- (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewVideoOrientation {
+    if (self = [self initWithVideoConfiguration:configuration]) {
+        self.capturePreviewVideoOrientation = capturePreviewVideoOrientation;
     }
     return self;
 }
@@ -94,19 +123,35 @@
     } else {
         [UIApplication sharedApplication].idleTimerDisabled = YES;
         [self reloadFilter];
+        
+        //JK: this is the first point at which the camera exists (reloadFilter lazily creates it)
+        if (_preView != nil) [self.videoCamera setPreView:_preView];
+        
         [self.videoCamera startCameraCapture];
         if(self.saveLocalVideo) [self.movieWriter startRecording];
     }
 }
 
+
 - (void)setPreView:(UIView *)preView {
+    _preView = preView;
+    
+    //UGH: need to set camera's preview, but camera doesn't exist yet, and not sure I want to create it here -- although I don't see why not, to be tested
+    
+    //make gpuImageView
+    //VEVOLIVEHACK: arg preView is always in portrait, and is used for showing the preview layer. But rendering for streaming requires gpuImageView (why??) and we set its aspect ratio to landscape, our output aspect
+    
     if (self.gpuImageView.superview) [self.gpuImageView removeFromSuperview];
-    [preView insertSubview:self.gpuImageView atIndex:0];
-    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.width, preView.frame.size.height);
+//    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.width, preView.frame.size.height);
+    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.height, preView.frame.size.width);
+    
+    //DEBUG: to see text in screen, uncomment this line
+//    [preView insertSubview:self.gpuImageView atIndex:0];
 }
 
 - (UIView *)preView {
-    return self.gpuImageView.superview;
+    return _preView;
+    //return self.gpuImageView.superview;
 }
 
 - (void)setCaptureDevicePosition:(AVCaptureDevicePosition)captureDevicePosition {
@@ -247,7 +292,7 @@
 - (GPUImageView *)gpuImageView{
     if(!_gpuImageView){
         _gpuImageView = [[GPUImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        [_gpuImageView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
+        [_gpuImageView setFillMode:kGPUImageFillModePreserveAspectRatio];
         [_gpuImageView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     }
     return _gpuImageView;
@@ -335,7 +380,9 @@
         }
         
         [self.blendFilter addTarget:self.output];
+        
         [self.filter addTarget:self.gpuImageView];
+        
         [self.uiElementInput update];
     } else {
         // We should flip the facetime video horizontally

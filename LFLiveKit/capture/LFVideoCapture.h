@@ -30,7 +30,8 @@
 @property (nonatomic, assign) BOOL running;
 
 /** The preView will show OpenGL ES view*/
-@property (null_resettable, nonatomic, strong) UIView *preView;
+///NOPE: the preView will show the AVCaptureSession's AVCaptureVideoPreviewLayer
+@property (nonatomic, strong, nullable) UIView *preView;
 
 /** The captureDevicePosition control camraPosition ,default front*/
 @property (nonatomic, assign) AVCaptureDevicePosition captureDevicePosition;
@@ -80,5 +81,8 @@
    capture unstable.
  */
 - (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration NS_DESIGNATED_INITIALIZER;
+
+///use this initializer to set a capture preview video orienation that is different than output video configuration's orientation
+- (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewVideoOrientation;
 
 @end

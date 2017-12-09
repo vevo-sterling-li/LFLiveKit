@@ -41,6 +41,10 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     BOOL addedAudioInputsDueToEncodingTarget;
 }
 
+@property (nonatomic, strong) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
+@property (nonatomic, strong) AVCaptureConnection *videoPreviewConnection;
+@property (nonatomic, strong) AVCaptureConnection *outpuConnection;
+
 - (void)updateOrientationSendToTargets;
 - (void)convertYUVToRGBOutput;
 
@@ -56,6 +60,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 @synthesize delegate = _delegate;
 @synthesize horizontallyMirrorFrontFacingCamera = _horizontallyMirrorFrontFacingCamera, horizontallyMirrorRearFacingCamera = _horizontallyMirrorRearFacingCamera;
 @synthesize frameRate = _frameRate;
+@synthesize preView = _preView;
 
 #pragma mark -
 #pragma mark Initialization and teardown
@@ -107,18 +112,40 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     
 	// Create the capture session
 	_captureSession = [[AVCaptureSession alloc] init];
-	
+    
+    //configure the capture session
     [_captureSession beginConfiguration];
     
-	// Add the video input	
+    // Add the video input
 	NSError *error = nil;
 	videoInput = [[AVCaptureDeviceInput alloc] initWithDevice:_inputCamera error:&error];
 	if ([_captureSession canAddInput:videoInput]) 
 	{
 		[_captureSession addInput:videoInput];
 	}
-	
-	// Add the video frame output	
+    
+    //VEVOLIVEHACK: add the preview layer outut connection THAT IS ALWAYS IN PORTRAIT
+    //rather than acquire the preview offered by the session, which defaults to landscape, configure a preview layer without a connection, then create our own connection
+    _captureVideoPreviewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:_captureSession];
+    _captureVideoPreviewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+    //add preview layer to preView
+    if (_preView != nil) {
+        _captureVideoPreviewLayer.frame = _preView.bounds;
+        [_preView.layer insertSublayer:_captureVideoPreviewLayer atIndex:0];
+    }
+    //create a connection to our videoInput's video port, then attach the preview layer to that
+    for (AVCaptureInputPort *inputPort in [videoInput ports]) {
+        if ([[inputPort mediaType] isEqualToString:AVMediaTypeVideo]) {
+            _videoPreviewConnection = [[AVCaptureConnection alloc] initWithInputPort:inputPort videoPreviewLayer:_captureVideoPreviewLayer];
+            _videoPreviewConnection.videoOrientation = AVCaptureVideoOrientationPortrait;
+            
+            if ([_captureSession canAddConnection:_videoPreviewConnection]) {
+                [_captureSession addConnection:_videoPreviewConnection];
+            }
+        }
+    }
+    
+	// connect to the session's default video output connection that is in landscape
 	videoOutput = [[AVCaptureVideoDataOutput alloc] init];
 	[videoOutput setAlwaysDiscardsLateVideoFrames:NO];
     
@@ -208,6 +235,8 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 	if ([_captureSession canAddOutput:videoOutput])
 	{
 		[_captureSession addOutput:videoOutput];
+        _outpuConnection = [videoOutput connectionWithMediaType:AVMediaTypeVideo];
+        _outpuConnection.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
 	}
 	else
 	{
@@ -238,6 +267,8 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 - (void)dealloc 
 {
+//    [self.captureVideoPreviewLayer removeFromSuperlayer];
+    
     [self stopCameraCapture];
     [videoOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
     [audioOutput setSampleBufferDelegate:nil queue:dispatch_get_main_queue()];
@@ -252,6 +283,17 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     }
 #endif
 }
+
+#pragma mark - view for preview layer
+- (void)setPreView:(UIView *)preView {
+    _preView = preView;
+    if (_captureVideoPreviewLayer != nil) {
+        _captureVideoPreviewLayer.frame = _preView.bounds;
+        [_preView.layer insertSublayer:_captureVideoPreviewLayer atIndex:0];
+    }
+}
+-(UIView*)preView { return _preView; }
+
 
 - (BOOL)addAudioInputsAndOutputs
 {

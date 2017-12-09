@@ -66,6 +66,7 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 @property (nonatomic, assign) BOOL running;
 
 /** The preView will show OpenGL ES view*/
+///NOPE: the preView will show the AVCaptureSession's AVCaptureVideoPreviewLayer
 @property (nonatomic, strong, null_resettable) UIView *preView;
 
 /** The captureDevicePosition control camraPosition ,default front*/
@@ -140,11 +141,18 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
  */
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration;
 
+
+- (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
+                                 videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
+                     capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation;
+
+
 /**
  The designated initializer. Multiple instances with the same configuration will make the
  capture unstable.
  */
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration captureType:(LFLiveCaptureTypeMask)captureType NS_DESIGNATED_INITIALIZER;
+
 
 /** The start stream .*/
 - (void)startLive:(nonnull LFLiveStreamInfo *)streamInfo;

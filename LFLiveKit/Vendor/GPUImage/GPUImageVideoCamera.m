@@ -236,7 +236,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 	{
 		[_captureSession addOutput:videoOutput];
         _outpuConnection = [videoOutput connectionWithMediaType:AVMediaTypeVideo];
-        _outpuConnection.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+        _outpuConnection.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
 	}
 	else
 	{

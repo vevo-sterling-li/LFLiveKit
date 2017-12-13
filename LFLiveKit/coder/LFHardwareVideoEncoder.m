@@ -22,6 +22,8 @@
 @property (nonatomic) NSInteger currentVideoBitRate;
 @property (nonatomic) BOOL isBackGround;
 
+@property (nonatomic, assign) BOOL fullyBackground;
+
 @end
 
 @implementation LFHardwareVideoEncoder
@@ -32,7 +34,8 @@
         NSLog(@"USE LFHardwareVideoEncoder");
         _configuration = configuration;
         [self resetCompressionSession];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willEnterBackground:) name:UIApplicationWillResignActiveNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(didEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(willEnterForeground:) name:UIApplicationDidBecomeActiveNotification object:nil];
 #ifdef DEBUG
         enabledWriteVideoFile = NO;
@@ -124,13 +127,23 @@
 }
 
 #pragma mark -- Notification
-- (void)willEnterBackground:(NSNotification*)notification{
+
+- (void)willResignActive:(NSNotification *)notification {
+    _fullyBackground = NO;
+}
+
+- (void)didEnterBackground:(NSNotification*)notification{
+    _fullyBackground = YES;
     _isBackGround = YES;
 }
 
 - (void)willEnterForeground:(NSNotification*)notification{
-    [self resetCompressionSession];
-    _isBackGround = NO;
+    
+    if (_fullyBackground) {
+        [self resetCompressionSession];
+        _isBackGround = NO;
+    }
+    _fullyBackground = NO;
 }
 
 #pragma mark -- VideoCallBack

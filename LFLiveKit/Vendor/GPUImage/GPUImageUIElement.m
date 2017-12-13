@@ -90,7 +90,14 @@
     CGContextRef imageContext = CGBitmapContextCreate(imageData, (int)layerPixelSize.width, (int)layerPixelSize.height, 8, (int)layerPixelSize.width * 4, genericRGBColorspace,  kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
     //    CGContextRotateCTM(imageContext, M_PI_2);
     CGContextTranslateCTM(imageContext, 0.0f, layerPixelSize.height);
-    CGContextScaleCTM(imageContext, layer.contentsScale, -layer.contentsScale);
+    
+    // We've seen attached layer getting stretched when streaming from an iPhone X whose resolution is not close to 16:9.
+    // The ratio of the stretch is the actual resolution devided by (16/9). In iPhone X's case it's 1.218. So in our scale, we should consider adding this to the x-axis scale factor so the output layer is still the same scale without stretching.
+    CGFloat stretch = 1;
+    if (layerPixelSize.width > layerPixelSize.height)
+        stretch = layerPixelSize.width/layerPixelSize.height/(16.0/9.0);
+    CGContextScaleCTM(imageContext, layer.contentsScale*stretch, -layer.contentsScale);
+    
     //        CGContextSetBlendMode(imageContext, kCGBlendModeCopy); // From Technical Q&A QA1708: http://developer.apple.com/library/ios/#qa/qa1708/_index.html
     
     [layer renderInContext:imageContext];

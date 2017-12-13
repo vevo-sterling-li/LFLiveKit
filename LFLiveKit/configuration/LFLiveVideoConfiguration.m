@@ -26,9 +26,9 @@
 
 + (instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality outputImageOrientation:(UIInterfaceOrientation)outputImageOrientation {
     LFLiveVideoConfiguration *configuration = [LFLiveVideoConfiguration new];
-    [configuration updateConfigurationBasedOnVideoQuality:videoQuality];
     configuration.outputImageOrientation = outputImageOrientation;
-
+    [configuration updateConfigurationBasedOnVideoQuality:videoQuality];
+    
     return configuration;
 }
 
@@ -137,9 +137,6 @@
         default:
             break;
     }
-    
-    //VEVOLIVEHACK: does not use the autorotation feature; instead our video configuration connects two AVCaptureConnections to the AVCaptureSession in GPUImageVideoCamera: the default output connection on the session which we lock into landscapeLeft (for the front facing camera), and one for an AVCaptureVideoPreviewLayer locked in portrait for the initial video preview. LFLiveKit, tho, as designed expects to start with the front facing camera in portrait and with autorotation on -- obvious from how all the above default configurations' videoSize aspects are portrait.  So here we convert the default output connection aspect from portrait to landscape
-    self.videoSize = CGSizeMake(self.videoSize.height, self.videoSize.width);
     
     self.sessionPreset = [self supportSessionPreset:self.sessionPreset];
     self.videoMaxKeyframeInterval = self.videoFrameRate*2;

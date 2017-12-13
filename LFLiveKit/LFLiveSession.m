@@ -50,6 +50,7 @@
 /// 时间戳锁
 @property (nonatomic, strong) dispatch_semaphore_t lock;
 
+@property (nonatomic, assign) AVCaptureVideoOrientation capturePreviewVideoOrientation;
 
 @end
 
@@ -88,6 +89,17 @@
     }
     return self;
 }
+
+- (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
+                                 videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
+                     capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation
+{
+    if (self = [self initWithAudioConfiguration:audioConfiguration videoConfiguration:videoConfiguration]) {
+        self.capturePreviewVideoOrientation = capturePreviewOrientation;
+    }
+    return self;
+}
+
 
 - (void)dealloc {
     _videoCaptureSource.running = NO;
@@ -357,7 +369,7 @@
 - (LFVideoCapture *)videoCaptureSource {
     if (!_videoCaptureSource) {
         if(self.captureType & LFLiveCaptureMaskVideo){
-            _videoCaptureSource = [[LFVideoCapture alloc] initWithVideoConfiguration:_videoConfiguration];
+            _videoCaptureSource = [[LFVideoCapture alloc] initWithVideoConfiguration:_videoConfiguration capturePreviewVideoOrientation:_capturePreviewVideoOrientation];
             _videoCaptureSource.delegate = self;
         }
     }

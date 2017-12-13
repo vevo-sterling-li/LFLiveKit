@@ -26,9 +26,9 @@
 
 + (instancetype)defaultConfigurationForQuality:(LFLiveVideoQuality)videoQuality outputImageOrientation:(UIInterfaceOrientation)outputImageOrientation {
     LFLiveVideoConfiguration *configuration = [LFLiveVideoConfiguration new];
-    [configuration updateConfigurationBasedOnVideoQuality:videoQuality];
     configuration.outputImageOrientation = outputImageOrientation;
-
+    [configuration updateConfigurationBasedOnVideoQuality:videoQuality];
+    
     return configuration;
 }
 
@@ -137,6 +137,7 @@
         default:
             break;
     }
+    
     self.sessionPreset = [self supportSessionPreset:self.sessionPreset];
     self.videoMaxKeyframeInterval = self.videoFrameRate*2;
     CGSize size = self.videoSize;

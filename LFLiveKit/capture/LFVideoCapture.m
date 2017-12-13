@@ -142,11 +142,7 @@
     //VEVOLIVEHACK: arg preView is always in portrait, and is used for showing the preview layer. But rendering for streaming requires gpuImageView (why??) and we set its aspect ratio to landscape, our output aspect
     
     if (self.gpuImageView.superview) [self.gpuImageView removeFromSuperview];
-//    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.width, preView.frame.size.height);
-    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.height, preView.frame.size.width);
-    
-    //DEBUG: to see text in screen, uncomment this line
-//    [preView insertSubview:self.gpuImageView atIndex:0];
+    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.width, preView.frame.size.height);
 }
 
 - (UIView *)preView {

@@ -62,7 +62,7 @@
             self.videoFrameRate = 30;
             self.videoMaxFrameRate = 30;
             self.videoMinFrameRate = 15;
-            self.videoBitRate = 800 * 1000;
+            self.videoBitRate = 990 * 1000;
             self.videoMaxBitRate = 960 * 1000;
             self.videoMinBitRate = 600 * 1000;
             self.videoSize = CGSizeMake(360, 640);
@@ -73,9 +73,9 @@
             self.videoFrameRate = 15;
             self.videoMaxFrameRate = 15;
             self.videoMinFrameRate = 10;
-            self.videoBitRate = 800 * 1000;
-            self.videoMaxBitRate = 960 * 1000;
-            self.videoMinBitRate = 500 * 1000;
+            self.videoBitRate = 1100 * 1000;
+            self.videoMaxBitRate = 1200 * 1000;
+            self.videoMinBitRate = 800 * 1000;
             self.videoSize = CGSizeMake(540, 960);
         }
             break;
@@ -84,9 +84,9 @@
             self.videoFrameRate = 24;
             self.videoMaxFrameRate = 24;
             self.videoMinFrameRate = 12;
-            self.videoBitRate = 800 * 1000;
-            self.videoMaxBitRate = 960 * 1000;
-            self.videoMinBitRate = 500 * 1000;
+            self.videoBitRate = 1700 * 1000;
+            self.videoMaxBitRate = 1400 * 1000;
+            self.videoMinBitRate = 1800 * 1000;
             self.videoSize = CGSizeMake(540, 960);
         }
             break;
@@ -95,9 +95,9 @@
             self.videoFrameRate = 30;
             self.videoMaxFrameRate = 30;
             self.videoMinFrameRate = 15;
-            self.videoBitRate = 1000 * 1000;
-            self.videoMaxBitRate = 1200 * 1000;
-            self.videoMinBitRate = 500 * 1000;
+            self.videoBitRate = 2000 * 1000;
+            self.videoMaxBitRate = 2400 * 1000;
+            self.videoMinBitRate = 1650 * 1000;
             self.videoSize = CGSizeMake(540, 960);
         }
             break;
@@ -106,9 +106,9 @@
             self.videoFrameRate = 15;
             self.videoMaxFrameRate = 15;
             self.videoMinFrameRate = 10;
-            self.videoBitRate = 1000 * 1000;
+            self.videoBitRate = 1600 * 1000;
             self.videoMaxBitRate = 1200 * 1000;
-            self.videoMinBitRate = 500 * 1000;
+            self.videoMinBitRate = 2000 * 1000;
             self.videoSize = CGSizeMake(720, 1280);
         }
             break;
@@ -117,9 +117,9 @@
             self.videoFrameRate = 24;
             self.videoMaxFrameRate = 24;
             self.videoMinFrameRate = 12;
-            self.videoBitRate = 1200 * 1000;
-            self.videoMaxBitRate = 1440 * 1000;
-            self.videoMinBitRate = 800 * 1000;
+            self.videoBitRate = 2500 * 1000;
+            self.videoMaxBitRate = 3000 * 1000;
+            self.videoMinBitRate = 2000 * 1000;
             self.videoSize = CGSizeMake(720, 1280);
         }
             break;
@@ -128,9 +128,9 @@
             self.videoFrameRate = 30;
             self.videoMaxFrameRate = 30;
             self.videoMinFrameRate = 15;
-            self.videoBitRate = 1200 * 1000;
-            self.videoMaxBitRate = 1440 * 1000;
-            self.videoMinBitRate = 500 * 1000;
+            self.videoBitRate = 3000 * 1000;
+            self.videoMaxBitRate = 3500 * 1000;
+            self.videoMinBitRate = 2500 * 1000;
             self.videoSize = CGSizeMake(720, 1280);
         }
             break;

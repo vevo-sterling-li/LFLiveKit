@@ -366,7 +366,6 @@
         [self.videoCamera addTarget:self.filter];
     }
     
-    
     // 添加水印
     if (self.watermarkView) {
         [self.filter addTarget:self.blendFilter];
@@ -380,7 +379,7 @@
         
         [self.blendFilter addTarget:self.output];
 
-      [self.filter addTarget:self.gpuImageView];
+        [self.filter addTarget:self.gpuImageView];
 //        [self.blendFilter addTarget:self.gpuImageView];
         [self.uiElementInput update];
     } else {

@@ -145,7 +145,7 @@
     //VEVOLIVEHACK: arg preView is always in portrait, and is used for showing the preview layer. But rendering for streaming requires gpuImageView (why??) and we set its aspect ratio to landscape, our output aspect
     
     if (self.gpuImageView.superview) [self.gpuImageView removeFromSuperview];
-    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.width, preView.frame.size.height);
+    self.gpuImageView.frame = CGRectMake(0, 0, preView.frame.size.height, preView.frame.size.width);
 }
 
 - (UIView *)preView {
@@ -250,12 +250,14 @@
 }
 
 - (void)setWatermarkView:(UIView *)watermarkView{
+    fprintf(stdout,"[LFVideoCapture/setWatermarkView:]...\n");
     if(_watermarkView && _watermarkView.superview){
         [_watermarkView removeFromSuperview];
         _watermarkView = nil;
     }
     _watermarkView = watermarkView;
     self.blendFilter.mix = watermarkView.alpha;
+    self.waterMarkContentView.frame = _watermarkView.frame;
     [self.waterMarkContentView addSubview:_watermarkView];
     [self reloadFilter];
 }
@@ -283,7 +285,8 @@
         _waterMarkContentView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     }
     
-    _waterMarkContentView.frame = [[UIScreen mainScreen] bounds];
+//    _waterMarkContentView.frame = CGRectMake(0, 0, self.configuration.videoSize.width, self.configuration.videoSize.height);
+//    _waterMarkContentView.frame = [[UIScreen mainScreen] bounds];
     
     return _waterMarkContentView;
 }
@@ -291,7 +294,7 @@
 - (GPUImageView *)gpuImageView{
     if(!_gpuImageView){
         _gpuImageView = [[GPUImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        [_gpuImageView setFillMode:kGPUImageFillModePreserveAspectRatio];
+        [_gpuImageView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
         [_gpuImageView setAutoresizingMask:UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight];
     }
     return _gpuImageView;
@@ -366,7 +369,6 @@
         [self.videoCamera addTarget:self.filter];
     }
     
-    
     // 添加水印
     if (self.watermarkView) {
         [self.filter addTarget:self.blendFilter];
@@ -380,7 +382,7 @@
         
         [self.blendFilter addTarget:self.output];
 
-      [self.filter addTarget:self.gpuImageView];
+        [self.filter addTarget:self.gpuImageView];
 //        [self.blendFilter addTarget:self.gpuImageView];
         [self.uiElementInput update];
     } else {

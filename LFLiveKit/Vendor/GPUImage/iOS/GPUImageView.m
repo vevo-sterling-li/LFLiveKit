@@ -232,15 +232,18 @@
 
 - (void)recalculateViewGeometry;
 {
+    //copy current bounds since we can't access the property off the main thread
+    CGRect currentBounds = self.bounds;
+    
     runSynchronouslyOnVideoProcessingQueue(^{
         CGFloat heightScaling, widthScaling;
         
-        CGSize currentViewSize = self.bounds.size;
+        CGSize currentViewSize = currentBounds.size;
         
         //    CGFloat imageAspectRatio = inputImageSize.width / inputImageSize.height;
         //    CGFloat viewAspectRatio = currentViewSize.width / currentViewSize.height;
         
-        CGRect insetRect = AVMakeRectWithAspectRatioInsideRect(inputImageSize, self.bounds);
+        CGRect insetRect = AVMakeRectWithAspectRatioInsideRect(inputImageSize, currentBounds);
         
         switch(_fillMode)
         {
@@ -261,6 +264,10 @@
                 heightScaling = currentViewSize.width / insetRect.size.width;
             }; break;
         }
+        
+//        fprintf(stdout,"[GPUImageView/recalculateViewGeometry]..inputImageSize=%fx%f\n",inputImageSize.width,inputImageSize.height);
+//        fprintf(stdout,"[GPUImageView/recalculateViewGeometry]..insetRect=(%f,%f) %fx%f\n",insetRect.origin.x,insetRect.origin.y,insetRect.size.width,insetRect.size.height);
+//        fprintf(stdout,"[GPUImageView/recalculateViewGeometry]..widthScaling=%f, heightScaling=%f\n",widthScaling,heightScaling);
         
         imageVertices[0] = -widthScaling;
         imageVertices[1] = -heightScaling;

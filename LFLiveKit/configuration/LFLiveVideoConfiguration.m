@@ -62,8 +62,8 @@
             self.videoFrameRate = 30;
             self.videoMaxFrameRate = 30;
             self.videoMinFrameRate = 15;
-            self.videoBitRate = 990 * 1000;
-            self.videoMaxBitRate = 960 * 1000;
+            self.videoBitRate = 960 * 1000;
+            self.videoMaxBitRate = 3000 * 1000;
             self.videoMinBitRate = 600 * 1000;
             self.videoSize = CGSizeMake(360, 640);
         }

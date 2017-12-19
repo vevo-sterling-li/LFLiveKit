@@ -152,7 +152,8 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
                                  videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
-                     capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation;
+                     capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation
+                                       videoBitrate:(NSUInteger)videoBitrate;
 
 
 /**

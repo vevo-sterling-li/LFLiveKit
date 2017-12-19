@@ -93,9 +93,21 @@
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
                                  videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
                      capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation
+                                       videoBitrate:(NSUInteger)videoBitrate
 {
     if (self = [self initWithAudioConfiguration:audioConfiguration videoConfiguration:videoConfiguration]) {
         self.capturePreviewVideoOrientation = capturePreviewOrientation;
+        
+        //JKHACK
+        if (videoBitrate < _videoConfiguration.videoMinBitRate) {
+            _videoConfiguration.videoBitRate = _videoConfiguration.videoMinFrameRate;
+        }
+        else if (videoBitrate > _videoConfiguration.videoMaxBitRate) {
+            _videoConfiguration.videoBitRate = _videoConfiguration.videoMaxFrameRate;
+        }
+        else {
+            _videoConfiguration.videoBitRate = videoBitrate;
+        }
     }
     return self;
 }

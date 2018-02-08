@@ -47,6 +47,7 @@
 }
 
 - (void)resetCompressionSession {
+    fprintf(stdout,"[LFHardwareVideoEncoder/resetCompressionSession]...\n");
     if (compressionSession) {
         VTCompressionSessionCompleteFrames(compressionSession, kCMTimeInvalid);
 
@@ -72,15 +73,18 @@
     VTSessionSetProperty(compressionSession, kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanTrue);
     VTSessionSetProperty(compressionSession, kVTCompressionPropertyKey_H264EntropyMode, kVTH264EntropyMode_CABAC);
     VTCompressionSessionPrepareToEncodeFrames(compressionSession);
-
 }
 
 - (void)setVideoBitRate:(NSInteger)videoBitRate {
     if(_isBackGround) return;
+    if (_currentVideoBitRate == videoBitRate) return;
+    
     VTSessionSetProperty(compressionSession, kVTCompressionPropertyKey_AverageBitRate, (__bridge CFTypeRef)@(videoBitRate));
     NSArray *limit = @[@(videoBitRate * 1.5/8), @(1)];
     VTSessionSetProperty(compressionSession, kVTCompressionPropertyKey_DataRateLimits, (__bridge CFArrayRef)limit);
+    
     _currentVideoBitRate = videoBitRate;
+    //UGH: double tracking here of same value: _videoConfiguration also has videoBitRate property that should be kept current BECAUSE if we have to reset the compression session, it is _configuration's videoBitRate that gets used
 }
 
 - (NSInteger)videoBitRate {
@@ -101,6 +105,9 @@
 #pragma mark -- LFVideoEncoder
 - (void)encodeVideoData:(CVPixelBufferRef)pixelBuffer timeStamp:(uint64_t)timeStamp {
     if(_isBackGround) return;
+    
+    fprintf(stdout,"[LFHardwareVideoEncoder/encodeVideoData:timeStamp:]...frame height=%d\n",(int)CVPixelBufferGetHeight(pixelBuffer));
+    
     frameCount++;
     CMTime presentationTimeStamp = CMTimeMake(frameCount, (int32_t)_configuration.videoFrameRate);
     VTEncodeInfoFlags flags;
@@ -163,6 +170,7 @@ static void VideoCompressonOutputCallback(void *VTref, void *VTFrameRef, OSStatu
     }
 
     if (keyframe && !videoEncoder->sps) {
+        fprintf(stdout,"[LFHardwareVideoEncoder/VideoCompressionOutputCallback()]...encoder generated sps\n");
         CMFormatDescriptionRef format = CMSampleBufferGetFormatDescription(sampleBuffer);
 
         size_t sparameterSetSize, sparameterSetCount;
@@ -185,7 +193,6 @@ static void VideoCompressonOutputCallback(void *VTref, void *VTFrameRef, OSStatu
                     [data appendData:videoEncoder->pps];
                     fwrite(data.bytes, 1, data.length, videoEncoder->fp);
                 }
-
             }
         }
     }
@@ -230,9 +237,7 @@ static void VideoCompressonOutputCallback(void *VTref, void *VTFrameRef, OSStatu
                 fwrite(data.bytes, 1, data.length, videoEncoder->fp);
             }
 
-
             bufferOffset += AVCCHeaderLength + NALUnitLength;
-
         }
 
     }

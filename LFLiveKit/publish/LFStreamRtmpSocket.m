@@ -157,6 +157,7 @@ SAVC(mp4a);
     if (!frame) return;
     [self.buffer appendObject:frame];
     
+    //note: reading isSending is not thread safe
     if(!self.isSending){
         [self sendFrame];
     }
@@ -167,6 +168,7 @@ SAVC(mp4a);
 }
 
 #pragma mark -- CustomMethod
+//note:isSending is read all over the place and on different threads, more, it is KVO'd below -- if observed new value is false, then it invokes sendFrame to send any waiting frames
 - (void)sendFrame {
     __weak typeof(self) _self = self;
      dispatch_async(self.rtmpSendQueue, ^{
@@ -233,12 +235,12 @@ SAVC(mp4a);
                 _self.debugInfo.timeStamp = CACurrentMediaTime() * 1000;
             }
             
-            //修改发送状态
+            //修改发送状态 (Modify the sending status)
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                 //< 这里只为了不循环调用sendFrame方法 调用栈是保证先出栈再进栈
+                //Sterling translation: "it's only so that we don't need to keep calling the sendFrame functions. Calling stacks is to guarantee that it pops out from stack first before pushing into the stack."
                 _self.isSending = NO;
             });
-            
         }
     });
 }
@@ -402,6 +404,7 @@ Failed:
     iIndex += pps_len;
 
     [self sendPacket:RTMP_PACKET_TYPE_VIDEO data:body size:iIndex nTimestamp:0];
+    //TODO: handle failure to send??
     free(body);
 }
 
@@ -428,6 +431,7 @@ Failed:
     memcpy(&body[i], frame.data.bytes, frame.data.length);
 
     [self sendPacket:RTMP_PACKET_TYPE_VIDEO data:body size:(rtmpLength) nTimestamp:frame.timestamp];
+    //TODO: handle failure to send??
     free(body);
 }
 
@@ -450,11 +454,15 @@ Failed:
     rtmp_pack.m_nTimeStamp = (uint32_t)nTimestamp;
 
     NSInteger nRet = [self RtmpPacketSend:&rtmp_pack];
+    if (nRet < 1) {
+        fprintf(stdout,"[LFStreamRtmpSocket/sendPacket:data:size:nTimestamp:]..RtmpPacketSend returned %ld\n",nRet);
+    }
 
     PILI_RTMPPacket_Free(&rtmp_pack);
     return nRet;
 }
 
+//return value is: -1=not ready to send, 0=fail to send: 1=sent OK
 - (NSInteger)RtmpPacketSend:(PILI_RTMPPacket *)packet {
     if (_rtmp && PILI_RTMP_IsConnected(_rtmp)) {
         int success = PILI_RTMP_SendPacket(_rtmp, packet, 0, &_error);
@@ -495,6 +503,7 @@ Failed:
 - (void)reconnect {
     dispatch_async(self.rtmpSendQueue, ^{
         if (self.retryTimes4netWorkBreaken++ < self.reconnectCount && !self.isReconnecting) {
+            fprintf(stdout,"[LFStreamRtmpSocket/reconnect]..reconnecting...\n");
             self.isConnected = NO;
             self.isConnecting = NO;
             self.isReconnecting = YES;
@@ -503,6 +512,7 @@ Failed:
             });
            
         } else if (self.retryTimes4netWorkBreaken >= self.reconnectCount) {
+            fprintf(stdout,"[LFStreamRtmpSocket/reconnect]..reconnect failed\n");
             if (self.delegate && [self.delegate respondsToSelector:@selector(socketStatus:status:)]) {
                 [self.delegate socketStatus:self status:LFLiveError];
             }
@@ -542,6 +552,7 @@ Failed:
 
 #pragma mark -- CallBack
 void RTMPErrorCallback(RTMPError *error, void *userData) {
+    fprintf(stdout,"[LFStreamRtmpSocket/RTMPErrorCallback()]...socket reported error=%d\n",error->code);
     LFStreamRTMPSocket *socket = (__bridge LFStreamRTMPSocket *)userData;
     if (error->code < 0) {
         [socket reconnect];

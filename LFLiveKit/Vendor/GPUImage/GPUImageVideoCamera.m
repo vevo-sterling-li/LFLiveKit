@@ -2,6 +2,9 @@
 #import "GPUImageMovieWriter.h"
 #import "GPUImageFilter.h"
 
+
+
+//?
 void setColorConversion601( GLfloat conversionMatrix[9] )
 {
     kColorConversion601 = conversionMatrix;
@@ -17,6 +20,9 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     kColorConversion709 = conversionMatrix;
 }
 
+
+
+//=====================================================================================================
 #pragma mark -
 #pragma mark Private methods and instance variables
 
@@ -36,6 +42,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     
     BOOL isFullYUVRange;
     
+    //imageBufferWidth and imageBufferHeight track resolution of CVPixelBuffers in the sample buffers sent from the capture session
     int imageBufferWidth, imageBufferHeight;
     
     BOOL addedAudioInputsDueToEncodingTarget;
@@ -50,6 +57,8 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 @end
 
+
+
 @implementation GPUImageVideoCamera
 
 @synthesize captureSessionPreset = _captureSessionPreset;
@@ -61,24 +70,33 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 @synthesize horizontallyMirrorFrontFacingCamera = _horizontallyMirrorFrontFacingCamera, horizontallyMirrorRearFacingCamera = _horizontallyMirrorRearFacingCamera;
 @synthesize frameRate = _frameRate;
 @synthesize preView = _preView;
+@synthesize outputFrameSize_landscape = _outputFrameSize_landscape;
+
 
 #pragma mark -
 #pragma mark Initialization and teardown
 
-- (id)init;
-{
-    if (!(self = [self initWithSessionPreset:AVCaptureSessionPreset640x480 cameraPosition:AVCaptureDevicePositionBack]))
-    {
+- (id)init {
+    if (!(self = [self initWithSessionPreset:AVCaptureSessionPreset640x480 cameraPosition:AVCaptureDevicePositionBack])) {
 		return nil;
     }
     
+    //set outputFrameSize to match capture preset resolution
+    _outputFrameSize_landscape = CGSizeMake(640.0, 480.0);
+    
+    return self;
+}
+
+-(nullable id)init720pSessionPresetWithOutputSize:(CGSize)outputFrameSize cameraPosition:(AVCaptureDevicePosition)cameraPosition {
+    if (self = [self initWithSessionPreset:AVCaptureSessionPreset1280x720 cameraPosition:cameraPosition]) {
+        _outputFrameSize_landscape = outputFrameSize;
+    }
     return self;
 }
 
 - (id)initWithSessionPreset:(NSString *)sessionPreset cameraPosition:(AVCaptureDevicePosition)cameraPosition; 
 {
-	if (!(self = [super init]))
-    {
+	if (!(self = [super init])) {
 		return nil;
     }
     
@@ -179,9 +197,7 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     }
     
     runSynchronouslyOnVideoProcessingQueue(^{
-        
-        if (captureAsYUV)
-        {
+        if (captureAsYUV) {
             [GPUImageContext useImageProcessingContext];
             //            if ([GPUImageContext deviceSupportsRedTextures])
             //            {
@@ -244,8 +260,11 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
         return nil;
 	}
     
+    //set capture session preset
 	_captureSessionPreset = sessionPreset;
     [_captureSession setSessionPreset:_captureSessionPreset];
+    //rather than parse session preset for frame resolution, set output frame size to zero and update on first CVSampleBuffer
+    _outputFrameSize_landscape = CGSizeZero;
 
 // This will let you get 60 FPS video from the 720p preset on an iPhone 4S, but only that device and that preset
 //    AVCaptureConnection *conn = [videoOutput connectionWithMediaType:AVMediaTypeVideo];
@@ -593,35 +612,34 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
 
 #define INITIALFRAMESTOIGNOREFORBENCHMARK 5
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - update targets
 - (void)updateTargetsForVideoCameraUsingCacheTextureAtWidth:(int)bufferWidth height:(int)bufferHeight time:(CMTime)currentTime;
 {
     // First, update all the framebuffers in the targets
-    for (id<GPUImageInput> currentTarget in targets)
-    {
-        if ([currentTarget enabled])
-        {
+    for (id<GPUImageInput> currentTarget in targets) {
+        if ([currentTarget enabled]) {
             NSInteger indexOfObject = [targets indexOfObject:currentTarget];
             NSInteger textureIndexOfTarget = [[targetTextureIndices objectAtIndex:indexOfObject] integerValue];
             
-            if (currentTarget != self.targetToIgnoreForUpdates)
-            {
+            //inform target of rotation, texture size, chromaticity, and frame buffer to use
+            if (currentTarget != self.targetToIgnoreForUpdates) {
+                
                 [currentTarget setInputRotation:outputRotation atIndex:textureIndexOfTarget];
                 [currentTarget setInputSize:CGSizeMake(bufferWidth, bufferHeight) atIndex:textureIndexOfTarget];
                 
-                if ([currentTarget wantsMonochromeInput] && captureAsYUV)
-                {
+                if ([currentTarget wantsMonochromeInput] && captureAsYUV) {
                     [currentTarget setCurrentlyReceivingMonochromeInput:YES];
                     // TODO: Replace optimization for monochrome output
                     [currentTarget setInputFramebuffer:outputFramebuffer atIndex:textureIndexOfTarget];
                 }
-                else
-                {
+                else {
                     [currentTarget setCurrentlyReceivingMonochromeInput:NO];
                     [currentTarget setInputFramebuffer:outputFramebuffer atIndex:textureIndexOfTarget];
                 }
             }
-            else
-            {
+            else {
                 [currentTarget setInputRotation:outputRotation atIndex:textureIndexOfTarget];
                 [currentTarget setInputFramebuffer:outputFramebuffer atIndex:textureIndexOfTarget];
             }
@@ -648,54 +666,53 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     }
 }
 
-- (void)processVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer;
-{
-    if (capturePaused)
-    {
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - process sample buffer
+- (void)processVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer {
+    if (capturePaused) {
         return;
     }
     
+    //get frame details from sample buffer
     CFAbsoluteTime startTime = CFAbsoluteTimeGetCurrent();
     CVImageBufferRef cameraFrame = CMSampleBufferGetImageBuffer(sampleBuffer);
     int bufferWidth = (int) CVPixelBufferGetWidth(cameraFrame);
     int bufferHeight = (int) CVPixelBufferGetHeight(cameraFrame);
     CFTypeRef colorAttachments = CVBufferGetAttachment(cameraFrame, kCVImageBufferYCbCrMatrixKey, NULL);
-    if (colorAttachments != NULL)
-    {
-        if(CFStringCompare(colorAttachments, kCVImageBufferYCbCrMatrix_ITU_R_601_4, 0) == kCFCompareEqualTo)
-        {
-            if (isFullYUVRange)
-            {
+    CMTime currentTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    
+    //setup conversion from YUV to RGB
+    if (colorAttachments != NULL) {
+        if(CFStringCompare(colorAttachments, kCVImageBufferYCbCrMatrix_ITU_R_601_4, 0) == kCFCompareEqualTo) {
+            if (isFullYUVRange) {
                 _preferredConversion = kColorConversion601FullRange;
             }
-            else
-            {
+            else {
                 _preferredConversion = kColorConversion601;
             }
         }
-        else
-        {
+        else {
             _preferredConversion = kColorConversion709;
         }
     }
-    else
-    {
-        if (isFullYUVRange)
-        {
+    else {
+        if (isFullYUVRange) {
             _preferredConversion = kColorConversion601FullRange;
         }
-        else
-        {
+        else {
             _preferredConversion = kColorConversion601;
         }
     }
+    
+    //if output frame size not set, initialize now to current pixel buffer size
+    if (CGSizeEqualToSize(_outputFrameSize_landscape,CGSizeZero)) {
+        _outputFrameSize_landscape = CGSizeMake(bufferWidth, bufferHeight);
+    }
 
-	CMTime currentTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-
+	//convert to YUV
     [GPUImageContext useImageProcessingContext];
-
-    if ([GPUImageContext supportsFastTextureUpload] && captureAsYUV)
-    {
+    if ([GPUImageContext supportsFastTextureUpload] && captureAsYUV) {
         CVOpenGLESTextureRef luminanceTextureRef = NULL;
         CVOpenGLESTextureRef chrominanceTextureRef = NULL;
 
@@ -704,8 +721,8 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
         {
             CVPixelBufferLockBaseAddress(cameraFrame, 0);
             
-            if ( (imageBufferWidth != bufferWidth) && (imageBufferHeight != bufferHeight) )
-            {
+            //update property that stores input pixel buffer size
+            if ( (imageBufferWidth != bufferWidth) && (imageBufferHeight != bufferHeight) ) {
                 imageBufferWidth = bufferWidth;
                 imageBufferHeight = bufferHeight;
             }
@@ -758,15 +775,13 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
                 [self convertYUVToRGBOutput];
 //            }
 
-            int rotatedImageBufferWidth = bufferWidth, rotatedImageBufferHeight = bufferHeight;
-            
-            if (GPUImageRotationSwapsWidthAndHeight(internalRotation))
-            {
-                rotatedImageBufferWidth = bufferHeight;
-                rotatedImageBufferHeight = bufferWidth;
+            int rotatedOutputFrameWidth = _outputFrameSize_landscape.width, rotatedOutputFrameHeight = _outputFrameSize_landscape.height;
+            if (GPUImageRotationSwapsWidthAndHeight(internalRotation)) {
+                rotatedOutputFrameWidth = _outputFrameSize_landscape.height;
+                rotatedOutputFrameHeight = _outputFrameSize_landscape.width;
             }
             
-            [self updateTargetsForVideoCameraUsingCacheTextureAtWidth:rotatedImageBufferWidth height:rotatedImageBufferHeight time:currentTime];
+            [self updateTargetsForVideoCameraUsingCacheTextureAtWidth:rotatedOutputFrameWidth height:rotatedOutputFrameHeight time:currentTime];
             
             CVPixelBufferUnlockBaseAddress(cameraFrame, 0);
             CFRelease(luminanceTextureRef);
@@ -852,19 +867,21 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     [self.audioEncodingTarget processAudioBuffer:sampleBuffer]; 
 }
 
-- (void)convertYUVToRGBOutput;
-{
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - convert YUV to RGB
+- (void)convertYUVToRGBOutput {
     [GPUImageContext setActiveShaderProgram:yuvConversionProgram];
 
-    int rotatedImageBufferWidth = imageBufferWidth, rotatedImageBufferHeight = imageBufferHeight;
-
-    if (GPUImageRotationSwapsWidthAndHeight(internalRotation))
-    {
-        rotatedImageBufferWidth = imageBufferHeight;
-        rotatedImageBufferHeight = imageBufferWidth;
+    //determine output frame resolution rela
+    int rotatedOutputFrameWidth = _outputFrameSize_landscape.width, rotatedOutputFrameHeight = _outputFrameSize_landscape.height;
+    if (GPUImageRotationSwapsWidthAndHeight(internalRotation)) {
+        rotatedOutputFrameWidth = _outputFrameSize_landscape.height;
+        rotatedOutputFrameHeight = _outputFrameSize_landscape.width;
     }
 
-    outputFramebuffer = [[GPUImageContext sharedFramebufferCache] fetchFramebufferForSize:CGSizeMake(rotatedImageBufferWidth, rotatedImageBufferHeight) textureOptions:self.outputTextureOptions onlyTexture:NO];
+    //create output frame buffer
+    outputFramebuffer = [[GPUImageContext sharedFramebufferCache] fetchFramebufferForSize:CGSizeMake(rotatedOutputFrameWidth, rotatedOutputFrameHeight) textureOptions:self.outputTextureOptions onlyTexture:NO];
     [outputFramebuffer activateFramebuffer];
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -907,41 +924,38 @@ void setColorConversion709( GLfloat conversionMatrix[9] )
     totalFrameTimeDuringCapture = 0.0;
 }
 
+
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -
 #pragma mark AVCaptureVideoDataOutputSampleBufferDelegate
-
-- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
-{
-    if (!self.captureSession.isRunning)
-    {
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+    if (!self.captureSession.isRunning) {
         return;
     }
-    else if (captureOutput == audioOutput)
-    {
+    else if (captureOutput == audioOutput) {
         [self processAudioSampleBuffer:sampleBuffer];
     }
-    else
-    {
-        if (dispatch_semaphore_wait(frameRenderingSemaphore, DISPATCH_TIME_NOW) != 0)
-        {
+    else {
+        if (dispatch_semaphore_wait(frameRenderingSemaphore, DISPATCH_TIME_NOW) != 0) {
             return;
         }
         
-        CFRetain(sampleBuffer);
+        CFRetain(sampleBuffer);     // *** RETAIN ***
         runAsynchronouslyOnVideoProcessingQueue(^{
             //Feature Detection Hook.
-            if (self.delegate)
-            {
+            if (self.delegate) {
                 [self.delegate willOutputSampleBuffer:sampleBuffer];
             }
             
             [self processVideoSampleBuffer:sampleBuffer];
             
-            CFRelease(sampleBuffer);
-            dispatch_semaphore_signal(frameRenderingSemaphore);
+            CFRelease(sampleBuffer);    // *** RELEASE ***
+            dispatch_semaphore_signal(frameRenderingSemaphore);     // *** SIGNAL ***
         });
     }
 }
+
+
 
 #pragma mark -
 #pragma mark Accessors

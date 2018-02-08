@@ -12,8 +12,20 @@
 
 @implementation LFLiveVideoConfiguration
 
-#pragma mark -- LifeCycle
 
+/*  According to several sources:
+    -0.1 bits/pixel is considered very good quality
+    -0.03 bits/pixel is considered very poor quality
+ 
+    as an example, ESPN encodes high-motion sports at 0.203 bits/pixel
+ 
+ To compute bitrate, multiply bits/pixel * pixels/sec = bits/sec
+ ie bits/sec = pixels/frame * frames/sec * bits/pixel
+ */
+
+
+
+#pragma mark -- LifeCycle
 + (instancetype)defaultConfiguration {
     LFLiveVideoConfiguration *configuration = [LFLiveVideoConfiguration defaultConfigurationForQuality:LFLiveVideoQuality_Default];
     return configuration;
@@ -32,122 +44,110 @@
     return configuration;
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - derive from videoQuality
 - (void)updateConfigurationBasedOnVideoQuality:(LFLiveVideoQuality)videoQuality {
-    self.videoQuality = videoQuality;
+    //set desired sessionPreset and set videoFrameRate which won't change even if sessionPreset must be lowered because desired resolution isn't supported
     switch (videoQuality) {
-        case LFLiveVideoQuality_Low1:{
-            self.sessionPreset = LFCaptureSessionPreset360x640;
-            self.videoFrameRate = 15;
-            self.videoMaxFrameRate = 15;
-            self.videoMinFrameRate = 10;
-            self.videoBitRate = 500 * 1000;
-            self.videoMaxBitRate = 600 * 1000;
-            self.videoMinBitRate = 400 * 1000;
-            self.videoSize = CGSizeMake(360, 640);
-        }
+        case LFLiveVideoQuality_Low1:
+            _sessionPreset = LFCaptureSessionPreset360x640;
+            _videoFrameRate = 15;
             break;
-        case LFLiveVideoQuality_Low2:{
-            self.sessionPreset = LFCaptureSessionPreset360x640;
-            self.videoFrameRate = 24;
-            self.videoMaxFrameRate = 24;
-            self.videoMinFrameRate = 12;
-            self.videoBitRate = 600 * 1000;
-            self.videoMaxBitRate = 720 * 1000;
-            self.videoMinBitRate = 500 * 1000;
-            self.videoSize = CGSizeMake(360, 640);
-        }
+        case LFLiveVideoQuality_Low2:
+            _sessionPreset = LFCaptureSessionPreset360x640;
+            _videoFrameRate = 24;
             break;
-        case LFLiveVideoQuality_Low3: {
-            self.sessionPreset = LFCaptureSessionPreset360x640;
-            self.videoFrameRate = 30;
-            self.videoMaxFrameRate = 30;
-            self.videoMinFrameRate = 15;
-            self.videoBitRate = 960 * 1000;
-            self.videoMaxBitRate = 3000 * 1000;
-            self.videoMinBitRate = 600 * 1000;
-            self.videoSize = CGSizeMake(360, 640);
-        }
+        case LFLiveVideoQuality_Low3:
+            _sessionPreset = LFCaptureSessionPreset360x640;
+            _videoFrameRate = 30;
             break;
-        case LFLiveVideoQuality_Medium1:{
-            self.sessionPreset = LFCaptureSessionPreset540x960;
-            self.videoFrameRate = 15;
-            self.videoMaxFrameRate = 15;
-            self.videoMinFrameRate = 10;
-            self.videoBitRate = 1100 * 1000;
-            self.videoMaxBitRate = 1200 * 1000;
-            self.videoMinBitRate = 800 * 1000;
-            self.videoSize = CGSizeMake(540, 960);
-        }
+        case LFLiveVideoQuality_Medium1:
+            _sessionPreset = LFCaptureSessionPreset540x960;
+            _videoFrameRate = 15;
             break;
-        case LFLiveVideoQuality_Medium2:{
-            self.sessionPreset = LFCaptureSessionPreset540x960;
-            self.videoFrameRate = 24;
-            self.videoMaxFrameRate = 24;
-            self.videoMinFrameRate = 12;
-            self.videoBitRate = 1700 * 1000;
-            self.videoMaxBitRate = 1400 * 1000;
-            self.videoMinBitRate = 1800 * 1000;
-            self.videoSize = CGSizeMake(540, 960);
-        }
+        case LFLiveVideoQuality_Medium2:
+            _sessionPreset = LFCaptureSessionPreset540x960;
+            _videoFrameRate = 24;
             break;
-        case LFLiveVideoQuality_Medium3:{
-            self.sessionPreset = LFCaptureSessionPreset540x960;
-            self.videoFrameRate = 30;
-            self.videoMaxFrameRate = 30;
-            self.videoMinFrameRate = 15;
-            self.videoBitRate = 2000 * 1000;
-            self.videoMaxBitRate = 2400 * 1000;
-            self.videoMinBitRate = 1650 * 1000;
-            self.videoSize = CGSizeMake(540, 960);
-        }
+        case LFLiveVideoQuality_Medium3:
+            _sessionPreset = LFCaptureSessionPreset540x960;
+            _videoFrameRate = 30;
             break;
-        case LFLiveVideoQuality_High1:{
-            self.sessionPreset = LFCaptureSessionPreset720x1280;
-            self.videoFrameRate = 15;
-            self.videoMaxFrameRate = 15;
-            self.videoMinFrameRate = 10;
-            self.videoBitRate = 1600 * 1000;
-            self.videoMaxBitRate = 1200 * 1000;
-            self.videoMinBitRate = 2000 * 1000;
-            self.videoSize = CGSizeMake(720, 1280);
-        }
+        case LFLiveVideoQuality_High1:
+            _sessionPreset = LFCaptureSessionPreset720x1280;
+            _videoFrameRate = 15;
             break;
-        case LFLiveVideoQuality_High2:{
-            self.sessionPreset = LFCaptureSessionPreset720x1280;
-            self.videoFrameRate = 24;
-            self.videoMaxFrameRate = 24;
-            self.videoMinFrameRate = 12;
-            self.videoBitRate = 2500 * 1000;
-            self.videoMaxBitRate = 3000 * 1000;
-            self.videoMinBitRate = 2000 * 1000;
-            self.videoSize = CGSizeMake(720, 1280);
-        }
+        case LFLiveVideoQuality_High2:
+            _sessionPreset = LFCaptureSessionPreset720x1280;
+            _videoFrameRate = 24;
             break;
-        case LFLiveVideoQuality_High3:{
-            self.sessionPreset = LFCaptureSessionPreset720x1280;
-            self.videoFrameRate = 30;
-            self.videoMaxFrameRate = 30;
-            self.videoMinFrameRate = 15;
-            self.videoBitRate = 3000 * 1000;
-            self.videoMaxBitRate = 3500 * 1000;
-            self.videoMinBitRate = 2500 * 1000;
-            self.videoSize = CGSizeMake(720, 1280);
-        }
+        case LFLiveVideoQuality_High3:
+            _sessionPreset = LFCaptureSessionPreset720x1280;
+            _videoFrameRate = 30;
             break;
         default:
             break;
     }
     
-    self.sessionPreset = [self supportSessionPreset:self.sessionPreset];
-    self.videoMaxKeyframeInterval = self.videoFrameRate*2;
-    CGSize size = self.videoSize;
-    if(self.landscape) {
-        self.videoSize = CGSizeMake(size.height, size.width);
-    } else {
-        self.videoSize = CGSizeMake(size.width, size.height);
+    //check if sessionPreset is supported on front facing camera, and if not, configure to next highest/closest supported
+    //why base on front canera? because it is less capable compared to rear camera (ie max front facing res is surely available on rear facing cam) and I guess  we don't want to support different resolutions when switching because to do so would require carefully managing video bitrate
+    LFLiveVideoSessionPreset supportedSessionPreset = [self supportSessionPreset: self.sessionPreset];
+    if (supportedSessionPreset != _sessionPreset) {
+        _sessionPreset = supportedSessionPreset;
+        //adjust videoQuality for actual sessionPreset
+        switch (_sessionPreset) {
+            case LFCaptureSessionPreset360x640:
+                if (_videoFrameRate == 15)
+                    _videoQuality = LFLiveVideoQuality_Low1;
+                else if (_videoFrameRate == 24)
+                    _videoQuality = LFLiveVideoQuality_Low2;
+                else
+                    _videoQuality = LFLiveVideoQuality_Low3;
+                break;
+            case LFCaptureSessionPreset540x960:
+                if (_videoFrameRate == 15)
+                    _videoQuality = LFLiveVideoQuality_Medium1;
+                else if (_videoFrameRate == 24)
+                    _videoQuality = LFLiveVideoQuality_Medium2;
+                else
+                    _videoQuality = LFLiveVideoQuality_Medium3;
+                break;
+            case LFCaptureSessionPreset720x1280:
+                if (_videoFrameRate == 15)
+                    _videoQuality = LFLiveVideoQuality_High1;
+                else if (_videoFrameRate == 24)
+                    _videoQuality = LFLiveVideoQuality_High2;
+                else
+                    _videoQuality = LFLiveVideoQuality_High3;
+                break;
+            default:
+                break;
+        }
     }
+    else {
+        _videoQuality = videoQuality;
+    }
+    
+    //compute video size based on supported session preset (method also takes into account whether landscape)
+    _videoSize = [self captureOutVideoSize];
+    
+    //several sources concur that max key frame interval is twice frame rate
+    self.videoMaxKeyframeInterval = self.videoFrameRate*2;
+    
+    //set bitrates (which are size and frame rate dependent)
+    //bits/pixel for poorest quality (min) and highest quality (max)
+    //NOTE: bits/pixels levels could be set per resolution...
+    double bitsPerPixelMin = 0.05;
+    double bitsPerPixelMax = 0.12;
+    double pixelsPerSec = (double)((NSUInteger)self.videoSize.width * (NSUInteger)self.videoSize.height * self.videoFrameRate);
+    _videoMinBitRate = (NSUInteger)ceil(bitsPerPixelMin * pixelsPerSec);
+    _videoMaxBitRate = (NSUInteger)floor(bitsPerPixelMax * pixelsPerSec);
+    _videoBitRate = (NSUInteger)ceil((double)(_videoMinBitRate + _videoMaxBitRate) / 2.0);
 }
 
+
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- Setter Getter
 - (NSString *)avSessionPreset {
     NSString *avSessionPreset = nil;
@@ -183,32 +183,51 @@
     return _videoSize;
 }
 
-- (void)setVideoMaxBitRate:(NSUInteger)videoMaxBitRate {
-    if (videoMaxBitRate <= _videoBitRate) return;
-    _videoMaxBitRate = videoMaxBitRate;
+-(void)setVideoBitRate:(NSUInteger)videoBitRate {
+    if (videoBitRate > _videoMaxBitRate) {
+        _videoBitRate = _videoMaxBitRate;
+    }
+    else if (videoBitRate < _videoMinBitRate) {
+        _videoBitRate = _videoMinBitRate;
+    }
+    else {
+        _videoBitRate = videoBitRate;
+    }
 }
 
-- (void)setVideoMinBitRate:(NSUInteger)videoMinBitRate {
-    if (videoMinBitRate >= _videoBitRate) return;
-    _videoMinBitRate = videoMinBitRate;
+-(void)setVideoQuality:(LFLiveVideoQuality)videoQuality {
+    [self updateConfigurationBasedOnVideoQuality:videoQuality];
 }
 
-- (void)setVideoMaxFrameRate:(NSUInteger)videoMaxFrameRate {
-    if (videoMaxFrameRate <= _videoFrameRate) return;
-    _videoMaxFrameRate = videoMaxFrameRate;
-}
+//- (void)setVideoMaxBitRate:(NSUInteger)videoMaxBitRate {
+//    if (videoMaxBitRate <= _videoBitRate) return;
+//    _videoMaxBitRate = videoMaxBitRate;
+//}
+//
+//- (void)setVideoMinBitRate:(NSUInteger)videoMinBitRate {
+//    if (videoMinBitRate >= _videoBitRate) return;
+//    _videoMinBitRate = videoMinBitRate;
+//}
 
-- (void)setVideoMinFrameRate:(NSUInteger)videoMinFrameRate {
-    if (videoMinFrameRate >= _videoFrameRate) return;
-    _videoMinFrameRate = videoMinFrameRate;
-}
+//- (void)setVideoMaxFrameRate:(NSUInteger)videoMaxFrameRate {
+//    if (videoMaxFrameRate <= _videoFrameRate) return;
+//    _videoMaxFrameRate = videoMaxFrameRate;
+//}
 
-- (void)setSessionPreset:(LFLiveVideoSessionPreset)sessionPreset{
-    _sessionPreset = sessionPreset;
-    _sessionPreset = [self supportSessionPreset:sessionPreset];
-}
+//- (void)setVideoMinFrameRate:(NSUInteger)videoMinFrameRate {
+//    if (videoMinFrameRate >= _videoFrameRate) return;
+//    _videoMinFrameRate = videoMinFrameRate;
+//}
 
-#pragma mark -- Custom Method
+//UGH: this setter exposes an inconsistency: preset needs to correlate with videoSize and video bitrates, but implementation of this setter does neither
+//- (void)setSessionPreset:(LFLiveVideoSessionPreset)sessionPreset{
+//    _sessionPreset = sessionPreset;
+//    _sessionPreset = [self supportSessionPreset:sessionPreset];
+//}
+
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - utilities
 - (LFLiveVideoSessionPreset)supportSessionPreset:(LFLiveVideoSessionPreset)sessionPreset {
     AVCaptureSession *session = [[AVCaptureSession alloc] init];
     AVCaptureDevice *inputCamera;
@@ -274,12 +293,14 @@
     return CGSizeMake(width, height);
 }
 
-#pragma mark -- encoder
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - encoder
 - (void)encodeWithCoder:(NSCoder *)aCoder {
     [aCoder encodeObject:[NSValue valueWithCGSize:self.videoSize] forKey:@"videoSize"];
     [aCoder encodeObject:@(self.videoFrameRate) forKey:@"videoFrameRate"];
-    [aCoder encodeObject:@(self.videoMaxFrameRate) forKey:@"videoMaxFrameRate"];
-    [aCoder encodeObject:@(self.videoMinFrameRate) forKey:@"videoMinFrameRate"];
+//    [aCoder encodeObject:@(self.videoMaxFrameRate) forKey:@"videoMaxFrameRate"];
+//    [aCoder encodeObject:@(self.videoMinFrameRate) forKey:@"videoMinFrameRate"];
     [aCoder encodeObject:@(self.videoMaxKeyframeInterval) forKey:@"videoMaxKeyframeInterval"];
     [aCoder encodeObject:@(self.videoBitRate) forKey:@"videoBitRate"];
     [aCoder encodeObject:@(self.videoMaxBitRate) forKey:@"videoMaxBitRate"];
@@ -294,8 +315,8 @@
     self = [super init];
     _videoSize = [[aDecoder decodeObjectForKey:@"videoSize"] CGSizeValue];
     _videoFrameRate = [[aDecoder decodeObjectForKey:@"videoFrameRate"] unsignedIntegerValue];
-    _videoMaxFrameRate = [[aDecoder decodeObjectForKey:@"videoMaxFrameRate"] unsignedIntegerValue];
-    _videoMinFrameRate = [[aDecoder decodeObjectForKey:@"videoMinFrameRate"] unsignedIntegerValue];
+//    _videoMaxFrameRate = [[aDecoder decodeObjectForKey:@"videoMaxFrameRate"] unsignedIntegerValue];
+//    _videoMinFrameRate = [[aDecoder decodeObjectForKey:@"videoMinFrameRate"] unsignedIntegerValue];
     _videoMaxKeyframeInterval = [[aDecoder decodeObjectForKey:@"videoMaxKeyframeInterval"] unsignedIntegerValue];
     _videoBitRate = [[aDecoder decodeObjectForKey:@"videoBitRate"] unsignedIntegerValue];
     _videoMaxBitRate = [[aDecoder decodeObjectForKey:@"videoMaxBitRate"] unsignedIntegerValue];
@@ -311,8 +332,8 @@
     NSUInteger hash = 0;
     NSArray *values = @[[NSValue valueWithCGSize:self.videoSize],
                         @(self.videoFrameRate),
-                        @(self.videoMaxFrameRate),
-                        @(self.videoMinFrameRate),
+//                        @(self.videoMaxFrameRate),
+//                        @(self.videoMinFrameRate),
                         @(self.videoMaxKeyframeInterval),
                         @(self.videoBitRate),
                         @(self.videoMaxBitRate),
@@ -329,6 +350,9 @@
     return hash;
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - equality
 - (BOOL)isEqual:(id)other {
     if (other == self) {
         return YES;
@@ -338,8 +362,8 @@
         LFLiveVideoConfiguration *object = other;
         return CGSizeEqualToSize(object.videoSize, self.videoSize) &&
                object.videoFrameRate == self.videoFrameRate &&
-               object.videoMaxFrameRate == self.videoMaxFrameRate &&
-               object.videoMinFrameRate == self.videoMinFrameRate &&
+//               object.videoMaxFrameRate == self.videoMaxFrameRate &&
+//               object.videoMinFrameRate == self.videoMinFrameRate &&
                object.videoMaxKeyframeInterval == self.videoMaxKeyframeInterval &&
                object.videoBitRate == self.videoBitRate &&
                object.videoMaxBitRate == self.videoMaxBitRate &&
@@ -352,19 +376,37 @@
     }
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - NSCopying
 - (id)copyWithZone:(nullable NSZone *)zone {
-    LFLiveVideoConfiguration *other = [self.class defaultConfiguration];
+    LFLiveVideoConfiguration *other = [self.class defaultConfigurationForQuality: _videoQuality outputImageOrientation: _outputImageOrientation];
+    other.videoSize = _videoSize;
+    other.videoSizeRespectingAspectRatio = _videoSizeRespectingAspectRatio;
+    other.outputImageOrientation = _outputImageOrientation;
+    other.autorotate = _autorotate;
+    //other.videoFrameRate = _videoFrameRate;
+    other.videoMaxKeyframeInterval = _videoMaxKeyframeInterval;
+    other.videoBitRate = _videoBitRate;
+    //other.videoMinBitRate = _videoMinBitRate;
+    //other.videoMinBitRate = _videoMaxBitRate;
+    //other.sessionPreset = _sessionPreset;
+    //avSessionPreset is a computed property
+    //other.landscape = _landscape;
     return other;
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - description
 - (NSString *)description {
     NSMutableString *desc = @"".mutableCopy;
     [desc appendFormat:@"<LFLiveVideoConfiguration: %p>", self];
     [desc appendFormat:@" videoSize:%@", NSStringFromCGSize(self.videoSize)];
     [desc appendFormat:@" videoSizeRespectingAspectRatio:%zi",self.videoSizeRespectingAspectRatio];
     [desc appendFormat:@" videoFrameRate:%zi", self.videoFrameRate];
-    [desc appendFormat:@" videoMaxFrameRate:%zi", self.videoMaxFrameRate];
-    [desc appendFormat:@" videoMinFrameRate:%zi", self.videoMinFrameRate];
+//    [desc appendFormat:@" videoMaxFrameRate:%zi", self.videoMaxFrameRate];
+//    [desc appendFormat:@" videoMinFrameRate:%zi", self.videoMinFrameRate];
     [desc appendFormat:@" videoMaxKeyframeInterval:%zi", self.videoMaxKeyframeInterval];
     [desc appendFormat:@" videoBitRate:%zi", self.videoBitRate];
     [desc appendFormat:@" videoMaxBitRate:%zi", self.videoMaxBitRate];
@@ -376,6 +418,9 @@
     return desc;
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - ?
 - (void)refreshVideoSize {
     CGSize size = self.videoSize;
     if(self.landscape) {

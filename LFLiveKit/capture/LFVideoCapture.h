@@ -80,9 +80,13 @@
    The designated initializer. Multiple instances with the same configuration will make the
    capture unstable.
  */
+
+///note that argument video configuration specifes the 
 - (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration NS_DESIGNATED_INITIALIZER;
 
 ///use this initializer to set a capture preview video orienation that is different than output video configuration's orientation
 - (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewVideoOrientation;
+
+-(void)setNewVideoConfiguration:(nonnull LFLiveVideoConfiguration*)newConfiguration;
 
 @end

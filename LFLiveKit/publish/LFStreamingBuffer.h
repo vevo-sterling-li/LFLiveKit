@@ -41,7 +41,7 @@ typedef NS_ENUM (NSUInteger, LFLiveBuffferState) {
 /** count of drop frames in last time */
 @property (nonatomic, assign) NSInteger lastDropFrames;
 
-/** add frame to buffer */
+/** add audio or video frame to buffer */
 - (void)appendObject:(nullable LFFrame *)frame;
 
 /** pop the first frome buffer */

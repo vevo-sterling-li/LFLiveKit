@@ -260,4 +260,8 @@
     return writablePath;
 }
 
+
+- (void)resetCompressionSession {
+}
+
 @end

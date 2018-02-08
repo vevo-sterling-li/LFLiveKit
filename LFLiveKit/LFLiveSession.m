@@ -23,7 +23,13 @@
 /// 音频配置
 @property (nonatomic, strong) LFLiveAudioConfiguration *audioConfiguration;
 /// 视频配置
+///videoConfiguration points to either videoConfigurationLow, videoConfigurationMedium, or videoConfigurationHigh
 @property (nonatomic, strong) LFLiveVideoConfiguration *videoConfiguration;
+@property (nonatomic, strong) LFLiveVideoConfiguration *previousVideoConfiguration;
+@property (nonatomic, strong) LFLiveVideoConfiguration *videoConfigurationLow;
+@property (nonatomic, strong) LFLiveVideoConfiguration *videoConfigurationMedium;
+@property (nonatomic, strong) LFLiveVideoConfiguration *videoConfigurationHigh;
+
 /// 声音采集
 @property (nonatomic, strong) LFAudioCapture *audioCaptureSource;
 /// 视频采集
@@ -31,7 +37,10 @@
 /// 音频编码
 @property (nonatomic, strong) id<LFAudioEncoding> audioEncoder;
 /// 视频编码
-@property (nonatomic, strong) id<LFVideoEncoding> videoEncoder;
+//@property (nonatomic, strong) id<LFVideoEncoding> videoEncoder;
+@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderLow;
+@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderMedium;
+@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderHigh;
 /// 上传
 @property (nonatomic, strong) id<LFStreamSocket> socket;
 
@@ -83,7 +92,53 @@
     if((captureType & LFLiveCaptureMaskVideo || captureType & LFLiveInputMaskVideo) && !videoConfiguration) @throw [NSException exceptionWithName:@"LFLiveSession init error" reason:@"videoConfiguration is nil " userInfo:nil];
     if (self = [super init]) {
         _audioConfiguration = audioConfiguration;
-        _videoConfiguration = videoConfiguration;
+        
+        //since we do not allow changing frame rate midstream, create low, med, high video configurations based on target frame rate (reflected by 1, 2, or 3)
+        switch (videoConfiguration.videoQuality) {
+            case LFLiveVideoQuality_Low1:
+                [self createVideoConfigurationsAtResolution1];
+                _videoConfiguration = _videoConfigurationLow;
+                break;
+            case LFLiveVideoQuality_Medium1:
+                [self createVideoConfigurationsAtResolution1];
+                _videoConfiguration = _videoConfigurationMedium;
+                break;
+            case LFLiveVideoQuality_High1:
+                [self createVideoConfigurationsAtResolution1];
+                _videoConfiguration = _videoConfigurationHigh;
+                break;
+                
+            case LFLiveVideoQuality_Low2:
+                [self createVideoConfigurationsAtResolution2];
+                _videoConfiguration = _videoConfigurationLow;
+                break;
+            case LFLiveVideoQuality_Medium2:
+                [self createVideoConfigurationsAtResolution2];
+                _videoConfiguration = _videoConfigurationMedium;
+                break;
+            case LFLiveVideoQuality_High2:
+                [self createVideoConfigurationsAtResolution2];
+                _videoConfiguration = _videoConfigurationHigh;
+                break;
+                
+            case LFLiveVideoQuality_Low3:
+                [self createVideoConfigurationsAtResolution3];
+                _videoConfiguration = _videoConfigurationLow;
+                break;
+            case LFLiveVideoQuality_Medium3:
+                [self createVideoConfigurationsAtResolution3];
+                _videoConfiguration = _videoConfigurationMedium;
+                break;
+            case LFLiveVideoQuality_High3:
+                [self createVideoConfigurationsAtResolution3];
+                _videoConfiguration = _videoConfigurationHigh;
+                break;
+            default:
+                assert(0);
+                break;
+        }
+        
+        _previousVideoConfiguration = nil;
         _adaptiveBitrate = NO;
         _captureType = captureType;
     }
@@ -121,53 +176,141 @@
     self.socket = nil;
 }
 
-- (void)pushVideo:(nullable CVPixelBufferRef)pixelBuffer{
-    if(self.captureType & LFLiveInputMaskVideo){
-        if (self.uploading) [self.videoEncoder encodeVideoData:pixelBuffer timeStamp:NOW];
+
+///these seem unused
+- (void)pushVideo:(nullable CVPixelBufferRef)pixelBuffer {
+    if (self.captureType & LFLiveInputMaskVideo) {
+        if (self.uploading) {
+            //[self.videoEncoder encodeVideoData:pixelBuffer timeStamp:NOW];
+            [self encodePixelBuffer: pixelBuffer timeStamp: NOW];
+        }
     }
 }
 
-- (void)pushAudio:(nullable NSData*)audioData{
-    if(self.captureType & LFLiveInputMaskAudio){
-        if (self.uploading) [self.audioEncoder encodeAudioData:audioData timeStamp:NOW];
+- (void)pushAudio:(nullable NSData*)audioData {
+    if (self.captureType & LFLiveInputMaskAudio) {
+        if (self.uploading)
+            [self.audioEncoder encodeAudioData:audioData timeStamp:NOW];
     }
 }
 
+//-----------------------------------------------------------------------------------------------------
+//frame encoding callbacks
 #pragma mark -- PrivateMethod
 - (void)pushSendBuffer:(LFFrame*)frame{
     if(self.relativeTimestamps == 0){
         self.relativeTimestamps = frame.timestamp;
     }
+    
     frame.timestamp = [self uploadTimestamp:frame.timestamp];
+//    fprintf(stdout,"[LFLiveSession/pushSendBuffer:]...frame.timestamp=%llu\n",frame.timestamp);
+    
     [self.socket sendFrame:frame];
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+//called when capture session instances have readied a new frame for encoding
 #pragma mark -- CaptureDelegate
 - (void)captureOutput:(nullable LFAudioCapture *)capture audioData:(nullable NSData*)audioData {
-    if (self.uploading) [self.audioEncoder encodeAudioData:audioData timeStamp:NOW];
+//    fprintf(stdout,"[LFLiveSession/captureOutput:audioData:}...\n");
+    if (self.uploading)
+        [self.audioEncoder encodeAudioData:audioData timeStamp:NOW];
 }
 
 - (void)captureOutput:(nullable LFVideoCapture *)capture pixelBuffer:(nullable CVPixelBufferRef)pixelBuffer {
-    if (self.uploading) [self.videoEncoder encodeVideoData:pixelBuffer timeStamp:NOW];
+    if (self.uploading) {
+        //[self.videoEncoder encodeVideoData:pixelBuffer timeStamp:NOW];
+        [self encodePixelBuffer: pixelBuffer timeStamp: NOW];
+    }
 }
 
+
+///call to target encoder appropriate to pixel buffer resolution
+-(void)encodePixelBuffer:(nonnull CVPixelBufferRef)pixelBuffer timeStamp:(uint64_t)timestamp {
+//    [self.videoEncoder setVideoBitRate: _videoConfiguration.videoBitRate];
+//    [self.videoEncoder encodeVideoData: pixelBuffer timeStamp: timestamp];
+    
+    //select correct encoder based on image resolution (720p, 540p, 360p, ie based on height param only)
+    int bufferHeight = (int) CVPixelBufferGetHeight(pixelBuffer);
+    fprintf(stdout,"[LFLiveSession/encodePixelBuffer:timestamp:]...pixel buffer height=%d\n",bufferHeight);
+    if (bufferHeight == _videoConfigurationLow.videoSize.height) {
+        //update encoder video bitrate based on current 'low' configuration, then encode
+        [self.videoEncoderLow setVideoBitRate: _videoConfigurationLow.videoBitRate];
+        [self.videoEncoderLow encodeVideoData: pixelBuffer timeStamp: timestamp];
+    }
+    else if (bufferHeight == _videoConfigurationMedium.videoSize.height) {
+        //update encoder video bitrate based on current 'medium' configuration, then encode
+        [self.videoEncoderMedium setVideoBitRate: _videoConfigurationMedium.videoBitRate];
+        [self.videoEncoderMedium encodeVideoData: pixelBuffer timeStamp: timestamp];
+    }
+    else if (bufferHeight == _videoConfigurationHigh.videoSize.height) {
+        //update encoder video bitrate based on current 'high' configuration, then encode
+        [self.videoEncoderHigh setVideoBitRate: _videoConfigurationHigh.videoBitRate];
+        [self.videoEncoderHigh encodeVideoData: pixelBuffer timeStamp: timestamp];
+    }
+    else {
+        assert(0);  //for debugging
+    }
+    
+    //if we just changed video configuration, and if this frame to be encoded is the first frame from the render pipeline with resolution matching the new configuration, then previousVideoConfiguration is set and we need to reset its corresponding video encoder so that it is ready to start on a key frame if we return to the previous resolution
+    if (bufferHeight == _videoConfiguration.videoSize.height && _previousVideoConfiguration) {
+        fprintf(stdout,"..resetting previous video configuration video encoder session..\n");
+        switch (_previousVideoConfiguration.videoQuality) {
+            case LFLiveVideoQuality_Low1:
+            case LFLiveVideoQuality_Low2:
+            case LFLiveVideoQuality_Low3:
+                [self.videoEncoderLow resetCompressionSession];
+                break;
+            case LFLiveVideoQuality_Medium1:
+            case LFLiveVideoQuality_Medium2:
+            case LFLiveVideoQuality_Medium3:
+                [self.videoEncoderMedium resetCompressionSession];
+                break;
+            case LFLiveVideoQuality_High1:
+            case LFLiveVideoQuality_High2:
+            case LFLiveVideoQuality_High3:
+                [self.videoEncoderHigh resetCompressionSession];
+                break;
+            default:
+                break;
+        }
+        
+        _previousVideoConfiguration = nil;
+    }
+}
+
+
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- EncoderDelegate
+//encoders callback with encoded frame
 - (void)audioEncoder:(nullable id<LFAudioEncoding>)encoder audioFrame:(nullable LFAudioFrame *)frame {
-    //<上传  时间戳对齐
+    // 上传  时间戳对齐 (Upload timestamp alignment)
     if (self.uploading){
         self.hasCaptureAudio = YES;
-        if(self.AVAlignment) [self pushSendBuffer:frame];
+        
+        //AVAlignment enforces that, when capturing both audio and video, that we have received both an encoded audio frame and an encoded video frame -- or more likely that we have captured both..that the capture session has provided both an audio and video frame -- is there some configuration here that requires this condition, or is this simply a sanity check that both are working, or is that we don't want to send video that doesn't have audio yet, and vice versa?
+        if(self.AVAlignment)
+            [self pushSendBuffer:frame];
     }
 }
 
 - (void)videoEncoder:(nullable id<LFVideoEncoding>)encoder videoFrame:(nullable LFVideoFrame *)frame {
-    //<上传 时间戳对齐
-    if (self.uploading){
-        if(frame.isKeyFrame && self.hasCaptureAudio) self.hasKeyFrameVideo = YES;
-        if(self.AVAlignment) [self pushSendBuffer:frame];
+    // 上传 时间戳对齐 (Upload timestamp alignment)
+    if (self.uploading) {
+        if(frame.isKeyFrame && self.hasCaptureAudio)
+            self.hasKeyFrameVideo = YES;
+        
+        //AVAlignment enforces that, when capturing both audio and video, that we have received both an encoded audio frame and an encoded video frame -- or more likely that we have captured both..that the capture session has provided both an audio and video frame -- is there some configuration here that requires this condition, or is this simply a sanity check that both are working, or is that we don't want to send video that doesn't have audio yet, and vice versa?
+        if (self.AVAlignment) {
+            //TODO: parse frame size from sps
+            [self pushSendBuffer:frame];
+        }
     }
 }
 
+
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- LFStreamTcpSocketDelegate
 - (void)socketStatus:(nullable id<LFStreamSocket>)socket status:(LFLiveState)status {
     if (status == LFLiveStart) {
@@ -210,23 +353,127 @@
 
 - (void)socketBufferStatus:(nullable id<LFStreamSocket>)socket status:(LFLiveBuffferState)status {
     if((self.captureType & LFLiveCaptureMaskVideo || self.captureType & LFLiveInputMaskVideo) && self.adaptiveBitrate){
-        NSUInteger videoBitRate = [self.videoEncoder videoBitRate];
+//        fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...\n");
+        
+        NSUInteger currentVideoBitRate = _videoConfiguration.videoBitRate;
+        static int timesInARowAtMinOrMaxBitrate = 0;
+        
         if (status == LFLiveBuffferDecline) {
-            if (videoBitRate < _videoConfiguration.videoMaxBitRate) {
-                videoBitRate = videoBitRate + 50 * 1000;
-                [self.videoEncoder setVideoBitRate:videoBitRate];
-                NSLog(@"Increase bitrate %@", @(videoBitRate));
+            //frame queue length is decreasing or zdro, so we can up video bit rate
+            if (currentVideoBitRate < _videoConfiguration.videoMaxBitRate) {
+                _videoConfiguration.videoBitRate = MIN(currentVideoBitRate + 100 * 1000, _videoConfiguration.videoMaxBitRate);
+                //DO NOT adjust encoder video bitrate here!
+                fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...increasing video bitrate from %d to %d\n",(int)currentVideoBitRate,(int)_videoConfiguration.videoBitRate);
+                timesInARowAtMinOrMaxBitrate = 0;
+            }
+            else if (timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
+                fprintf(stdout,"..at max bitrate for 3 times in a row, checking whether to increase resolution...\n");
+                //at max bitrate for current resolution for 3 times in a row
+                
+                if (_videoConfiguration != _videoConfigurationHigh) {
+                    LFLiveVideoConfiguration *newVidConfig = nil;
+                    if (_videoConfiguration == _videoConfigurationLow) {
+                        //low => medium
+                        newVidConfig = _videoConfigurationMedium;
+                    }
+                    else {
+                        //medium => high
+                        newVidConfig = _videoConfigurationHigh;
+                    }
+                
+                    fprintf(stdout,"..increasing video resolution to %dx%d\n",(int)newVidConfig.videoSize.width,(int)newVidConfig.videoSize.height);
+                    
+                    //start higher resolution configuration at its min bitrate
+                    newVidConfig.videoBitRate = newVidConfig.videoMinBitRate;
+                    
+                    //reset times at max counter
+                    timesInARowAtMinOrMaxBitrate = 0;
+                    
+                    //update LFVideoCapture instance configuration
+                    [self.videoCaptureSource setNewVideoConfiguration: newVidConfig];
+                    
+                    //update our own and track previous
+                    _previousVideoConfiguration = _videoConfiguration;
+                    _videoConfiguration = newVidConfig;
+                }
+                //else ==> nothing to do since already high
+            }
+            else {
+                //at max bitrate for current resolution
+                timesInARowAtMinOrMaxBitrate++;
             }
         } else {
-            if (videoBitRate > self.videoConfiguration.videoMinBitRate) {
-                videoBitRate = videoBitRate - 100 * 1000;
-                [self.videoEncoder setVideoBitRate:videoBitRate];
-                NSLog(@"Decline bitrate %@", @(videoBitRate));
+            //status == LFLiveBufferIncrease
+            //frame queue length is increasing, so we need to lower video bit rate
+            if (currentVideoBitRate > _videoConfiguration.videoMinBitRate) {
+                _videoConfiguration.videoBitRate = MAX(currentVideoBitRate - 100 * 1000, _videoConfiguration.videoMinBitRate);
+                //DO NOT adjust encoder video bitrate here!
+                fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...decreasing video bitrate from %d to %d\n",(int)currentVideoBitRate,(int)_videoConfiguration.videoBitRate);
+                timesInARowAtMinOrMaxBitrate = 0;
+            }
+            else if (timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
+                fprintf(stdout,"..at max bitrate for 3 times in a row, checking whether to decrease resolution...\n");
+                //at min bitrate for current resolution for 3 times in a row
+                
+                if (_videoConfiguration != _videoConfigurationLow) {
+                    LFLiveVideoConfiguration *newVidConfig = nil;
+                    if (_videoConfiguration == _videoConfigurationHigh) {
+                        //high => medium
+                        newVidConfig = _videoConfigurationMedium;
+                    }
+                    else {
+                        //medium => low
+                        newVidConfig = _videoConfigurationLow;
+                    }
+                    
+                    fprintf(stdout,"..decreasing video resolution to %dx%d\n",(int)newVidConfig.videoSize.width,(int)newVidConfig.videoSize.height);
+                    
+                    //start lower resolution configuration at its max bitrate
+                    newVidConfig.videoBitRate = newVidConfig.videoMaxBitRate;
+                    
+                    //reset times at max counter
+                    timesInARowAtMinOrMaxBitrate = 0;
+                    
+                    //update LFVideoCapture instance configuration
+                    [self.videoCaptureSource setNewVideoConfiguration: newVidConfig];
+                    
+                    //update our own and track previous
+                    _previousVideoConfiguration = _videoConfiguration;
+                    _videoConfiguration = newVidConfig;
+                }
+                //else ==> nothing to do since already low
+            }
+            else {
+                //at minimum bit rate for current resolution
+                timesInARowAtMinOrMaxBitrate++;
             }
         }
     }
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - video configurations by resolution
+-(void)createVideoConfigurationsAtResolution1 {
+    _videoConfigurationLow = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Low1 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationMedium = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Medium1 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationHigh = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_High1 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+}
+
+-(void)createVideoConfigurationsAtResolution2 {
+    _videoConfigurationLow = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Low2 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationMedium = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Medium2 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationHigh = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_High2 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+}
+
+-(void)createVideoConfigurationsAtResolution3 {
+    _videoConfigurationLow = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Low3 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationMedium = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_Medium3 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+    _videoConfigurationHigh = [LFLiveVideoConfiguration defaultConfigurationForQuality: LFLiveVideoQuality_High3 outputImageOrientation: UIInterfaceOrientationLandscapeRight];
+}
+
+
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- Getter Setter
 - (void)setRunning:(BOOL)running {
     if (_running == running) return;
@@ -384,16 +631,44 @@
     return _audioEncoder;
 }
 
-- (id<LFVideoEncoding>)videoEncoder {
-    if (!_videoEncoder) {
-        if([[UIDevice currentDevice].systemVersion floatValue] < 8.0){
-            _videoEncoder = [[LFH264VideoEncoder alloc] initWithVideoStreamConfiguration:_videoConfiguration];
-        }else{
-            _videoEncoder = [[LFHardwareVideoEncoder alloc] initWithVideoStreamConfiguration:_videoConfiguration];
-        }
-        [_videoEncoder setDelegate:self];
+//- (id<LFVideoEncoding>)videoEncoder {
+//    if (!_videoEncoder) {
+//        //note: we the videoEncoder's configuration to be encapsulated, so provide it a copy
+//        if([[UIDevice currentDevice].systemVersion floatValue] < 8.0){
+//            _videoEncoder = [[LFH264VideoEncoder alloc] initWithVideoStreamConfiguration:[_videoConfiguration copy]];
+//        } else {
+//            _videoEncoder = [[LFHardwareVideoEncoder alloc] initWithVideoStreamConfiguration:[_videoConfiguration copy]];
+//        }
+//        [_videoEncoder setDelegate:self];
+//    }
+//    return _videoEncoder;
+//}
+
+-(id<LFVideoEncoding>)videoEncoderLow {
+    if (!_videoEncoderLow) {
+        assert([[UIDevice currentDevice].systemVersion floatValue] >= 8.0);
+        _videoEncoderLow = [[LFHardwareVideoEncoder alloc] initWithVideoStreamConfiguration: _videoConfigurationLow];
+        [_videoEncoderLow setDelegate:self];
     }
-    return _videoEncoder;
+    return _videoEncoderLow;
+}
+
+-(id<LFVideoEncoding>)videoEncoderMedium {
+    if (!_videoEncoderMedium) {
+        assert([[UIDevice currentDevice].systemVersion floatValue] >= 8.0);
+        _videoEncoderMedium = [[LFHardwareVideoEncoder alloc] initWithVideoStreamConfiguration: _videoConfigurationMedium];
+        [_videoEncoderMedium setDelegate:self];
+    }
+    return _videoEncoderMedium;
+}
+
+-(id<LFVideoEncoding>)videoEncoderHigh {
+    if (!_videoEncoderHigh) {
+        assert([[UIDevice currentDevice].systemVersion floatValue] >= 8.0);
+        _videoEncoderHigh = [[LFHardwareVideoEncoder alloc] initWithVideoStreamConfiguration: _videoConfigurationHigh];
+        [_videoEncoderHigh setDelegate:self];
+    }
+    return _videoEncoderHigh;
 }
 
 - (id<LFStreamSocket>)socket {
@@ -428,10 +703,11 @@
 
 - (BOOL)AVAlignment{
     if((self.captureType & LFLiveCaptureMaskAudio || self.captureType & LFLiveInputMaskAudio) &&
-       (self.captureType & LFLiveCaptureMaskVideo || self.captureType & LFLiveInputMaskVideo)
-       ){
-        if(self.hasCaptureAudio && self.hasKeyFrameVideo) return YES;
-        else  return NO;
+       (self.captureType & LFLiveCaptureMaskVideo || self.captureType & LFLiveInputMaskVideo)) {
+        if(self.hasCaptureAudio && self.hasKeyFrameVideo)
+            return YES;
+        else
+            return NO;
     }else{
         return YES;
     }

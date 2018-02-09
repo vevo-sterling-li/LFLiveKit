@@ -106,7 +106,7 @@
 - (void)encodeVideoData:(CVPixelBufferRef)pixelBuffer timeStamp:(uint64_t)timeStamp {
     if(_isBackGround) return;
     
-    fprintf(stdout,"[LFHardwareVideoEncoder/encodeVideoData:timeStamp:]...frame height=%d\n",(int)CVPixelBufferGetHeight(pixelBuffer));
+//    fprintf(stdout,"[LFHardwareVideoEncoder/encodeVideoData:timeStamp:]...frame height=%d\n",(int)CVPixelBufferGetHeight(pixelBuffer));
     
     frameCount++;
     CMTime presentationTimeStamp = CMTimeMake(frameCount, (int32_t)_configuration.videoFrameRate);

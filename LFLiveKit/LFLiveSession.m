@@ -233,7 +233,7 @@
     
     //select correct encoder based on image resolution (720p, 540p, 360p, ie based on height param only)
     int bufferHeight = (int) CVPixelBufferGetHeight(pixelBuffer);
-    fprintf(stdout,"[LFLiveSession/encodePixelBuffer:timestamp:]...pixel buffer height=%d\n",bufferHeight);
+//    fprintf(stdout,"[LFLiveSession/encodePixelBuffer:timestamp:]...pixel buffer height=%d\n",bufferHeight);
     if (bufferHeight == _videoConfigurationLow.videoSize.height) {
         //update encoder video bitrate based on current 'low' configuration, then encode
         [self.videoEncoderLow setVideoBitRate: _videoConfigurationLow.videoBitRate];
@@ -255,7 +255,7 @@
     
     //if we just changed video configuration, and if this frame to be encoded is the first frame from the render pipeline with resolution matching the new configuration, then previousVideoConfiguration is set and we need to reset its corresponding video encoder so that it is ready to start on a key frame if we return to the previous resolution
     if (bufferHeight == _videoConfiguration.videoSize.height && _previousVideoConfiguration) {
-        fprintf(stdout,"..resetting previous video configuration video encoder session..\n");
+//        fprintf(stdout,"..resetting previous video configuration video encoder session..\n");
         switch (_previousVideoConfiguration.videoQuality) {
             case LFLiveVideoQuality_Low1:
             case LFLiveVideoQuality_Low2:

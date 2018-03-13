@@ -126,6 +126,9 @@ static int clk_tck;
 #include "handshake.h"
 #endif
 
+
+//static int gWriteCounter = 0;
+
 uint32_t
     PILI_RTMP_GetTime() {
 #ifdef _DEBUG
@@ -942,6 +945,8 @@ int PILI_RTMP_Connect(PILI_RTMP *r, PILI_RTMPPacket *cp, RTMPError *error) {
     struct PILI_CONNECTION_TIME conn_time;
     if (!r->Link.hostname.av_len)
         return FALSE;
+    
+//    gWriteCounter = 0;
 
     struct addrinfo hints = {0}, *ai, *cur_ai;
     hints.ai_family = PF_UNSPEC;
@@ -1405,12 +1410,13 @@ static int
 }
 
 static int
-    WriteN(PILI_RTMP *r, const char *buffer, int n, RTMPError *error) {
+WriteN(PILI_RTMP *r, const char *buffer, int n, RTMPError *error) {
     const char *ptr = buffer;
+    
 #ifdef CRYPTO
     char *encrypted = 0;
     char buf[RTMP_BUFFER_CACHE_SIZE];
-
+    
     if (r->Link.rc4keyOut) {
         if (n > sizeof(buf))
             encrypted = (char *)malloc(n);
@@ -1420,15 +1426,25 @@ static int
         RC4_encrypt2(r->Link.rc4keyOut, n, buffer, ptr);
     }
 #endif
-
+    
     while (n > 0) {
         int nBytes;
-
-        if (r->Link.protocol & RTMP_FEATURE_HTTP)
-            nBytes = HTTP_Post(r, RTMPT_SEND, ptr, n);
-        else
-            nBytes = PILI_RTMPSockBuf_Send(&r->m_sb, ptr, n);
-        RTMP_Log(RTMP_LOGDEBUG3, "%s: %d\n", __FUNCTION__, nBytes);
+//        if (gWriteCounter == 60000) {
+//            nBytes = -1;
+//        }
+//        else if (gWriteCounter > 60000) {
+//            nBytes = 0;
+//            break;
+//        }
+//        else {
+            if (r->Link.protocol & RTMP_FEATURE_HTTP)
+                nBytes = HTTP_Post(r, RTMPT_SEND, ptr, n);
+            else
+                nBytes = PILI_RTMPSockBuf_Send(&r->m_sb, ptr, n);
+            /*RTMP_Log(RTMP_LOGDEBUG, "%s: %d\n", __FUNCTION__, nBytes); */
+//        }
+        
+//        ++gWriteCounter;
 
         if (nBytes < 0) {
             int sockerr = GetSockError();

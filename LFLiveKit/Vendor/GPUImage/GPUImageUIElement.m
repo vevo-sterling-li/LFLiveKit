@@ -90,7 +90,10 @@
     CGContextRef imageContext = CGBitmapContextCreate(imageData, (int)layerPixelSize.width, (int)layerPixelSize.height, 8, (int)layerPixelSize.width * 4, genericRGBColorspace,  kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
     //    CGContextRotateCTM(imageContext, M_PI_2);
     CGContextTranslateCTM(imageContext, 0.0f, layerPixelSize.height);
+    
+    //invert y-axis to bring view into view
     CGContextScaleCTM(imageContext, layer.contentsScale, -layer.contentsScale);
+    
     //        CGContextSetBlendMode(imageContext, kCGBlendModeCopy); // From Technical Q&A QA1708: http://developer.apple.com/library/ios/#qa/qa1708/_index.html
     
     [layer renderInContext:imageContext];

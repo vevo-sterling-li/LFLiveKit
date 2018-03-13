@@ -66,6 +66,7 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 @property (nonatomic, assign) BOOL running;
 
 /** The preView will show OpenGL ES view*/
+///NOPE: the preView will show the AVCaptureSession's AVCaptureVideoPreviewLayer
 @property (nonatomic, strong, null_resettable) UIView *preView;
 
 /** The captureDevicePosition control camraPosition ,default front*/
@@ -94,6 +95,8 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 
 /*  The adaptiveBitrate control auto adjust bitrate. Default is NO */
 @property (nonatomic, assign) BOOL adaptiveBitrate;
+/*  The adaptiveResolution control auto adjust resolution. Requires adaptiveBitrate is YES. Default is NO */
+@property (nonatomic, assign) BOOL adaptiveResolution;
 
 /** The stream control upload and package*/
 @property (nullable, nonatomic, strong, readonly) LFLiveStreamInfo *streamInfo;
@@ -116,7 +119,7 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 /*** The warterMarkView control whether the watermark is displayed or not ,if set ni,will remove watermark,otherwise add. 
  set alpha represent mix.Position relative to outVideoSize.
  *.*/
-@property (nonatomic, strong, nullable) UIView *warterMarkView;
+@property (nonatomic, strong, nullable) UIView *watermarkView;
 
 /* The currentImage is videoCapture shot */
 @property (nonatomic, strong,readonly ,nullable) UIImage *currentImage;
@@ -126,6 +129,14 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
 
 /* The saveLocalVideoPath is save the local video  path */
 @property (nonatomic, strong, nullable) NSURL *saveLocalVideoPath;
+
+/* The disable rtmp reconnect */
+@property (nonatomic, assign) BOOL disableRetry;
+
+/// 音频配置
+@property (readonly, nonatomic, strong) LFLiveAudioConfiguration *audioConfiguration;
+/// 视频配置
+@property (readonly, nonatomic, strong) LFLiveVideoConfiguration *videoConfiguration;
 
 #pragma mark - Initializer
 ///=============================================================================
@@ -140,11 +151,18 @@ typedef NS_ENUM(NSInteger,LFLiveCaptureTypeMask) {
  */
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration;
 
+
+- (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
+                                 videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
+                     capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewOrientation;
+
+
 /**
  The designated initializer. Multiple instances with the same configuration will make the
  capture unstable.
  */
 - (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration captureType:(LFLiveCaptureTypeMask)captureType NS_DESIGNATED_INITIALIZER;
+
 
 /** The start stream .*/
 - (void)startLive:(nonnull LFLiveStreamInfo *)streamInfo;

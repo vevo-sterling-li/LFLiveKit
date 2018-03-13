@@ -30,7 +30,8 @@
 @property (nonatomic, assign) BOOL running;
 
 /** The preView will show OpenGL ES view*/
-@property (null_resettable, nonatomic, strong) UIView *preView;
+///NOPE: the preView will show the AVCaptureSession's AVCaptureVideoPreviewLayer
+@property (nonatomic, strong, nullable) UIView *preView;
 
 /** The captureDevicePosition control camraPosition ,default front*/
 @property (nonatomic, assign) AVCaptureDevicePosition captureDevicePosition;
@@ -57,7 +58,7 @@
 @property (nonatomic, assign) NSInteger videoFrameRate;
 
 /*** The warterMarkView control whether the watermark is displayed or not ,if set ni,will remove watermark,otherwise add *.*/
-@property (nonatomic, strong, nullable) UIView *warterMarkView;
+@property (nonatomic, strong, nullable) UIView *watermarkView;
 
 /* The currentImage is videoCapture shot */
 @property (nonatomic, strong, nullable) UIImage *currentImage;
@@ -79,6 +80,13 @@
    The designated initializer. Multiple instances with the same configuration will make the
    capture unstable.
  */
+
+///note that argument video configuration specifes the 
 - (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration NS_DESIGNATED_INITIALIZER;
+
+///use this initializer to set a capture preview video orienation that is different than output video configuration's orientation
+- (nullable instancetype)initWithVideoConfiguration:(nullable LFLiveVideoConfiguration *)configuration capturePreviewVideoOrientation:(AVCaptureVideoOrientation)capturePreviewVideoOrientation;
+
+-(void)setNewVideoConfiguration:(nonnull LFLiveVideoConfiguration*)newConfiguration;
 
 @end

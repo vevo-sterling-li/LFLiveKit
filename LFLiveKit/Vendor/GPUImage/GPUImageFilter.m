@@ -344,6 +344,9 @@ NSString *const kGPUImagePassthroughFragmentShaderString = SHADER_STRING
             NSInteger indexOfObject = [targets indexOfObject:currentTarget];
             NSInteger textureIndex = [[targetTextureIndices objectAtIndex:indexOfObject] integerValue];
 
+//            if ([self outputFrameSize].height > 360.0) {
+//                NSLog(@"currentTarget=%@\n",currentTarget);
+//            }
             [self setInputFramebufferForTarget:currentTarget atIndex:textureIndex];
             [currentTarget setInputSize:[self outputFrameSize] atIndex:textureIndex];
         }

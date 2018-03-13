@@ -74,7 +74,7 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 
 /// 视频的帧率，即 fps
 //JK: we don't support changing frame rate, so made this property readonly
-@property (nonatomic, assign, readonly) NSUInteger videoFrameRate;
+@property (nonatomic, readonly) NSUInteger videoFrameRate;
 
 /// 视频的最大帧率，即 fps
 //@property (nonatomic, assign) NSUInteger videoMaxFrameRate;
@@ -83,16 +83,19 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 //@property (nonatomic, assign) NSUInteger videoMinFrameRate;
 
 /// 最大关键帧间隔，可设定为 fps 的2倍，影响一个 gop 的大小
-@property (nonatomic, assign) NSUInteger videoMaxKeyframeInterval;
+//key frame max frame interval, set to 0 to let VTCompressionSession decide
+@property (nonatomic, readonly) NSUInteger videoMaxKeyframeInterval;
+//key frame max interval duration, set to 0 to let VTCompressionSession decide
+@property (nonatomic, readonly) NSUInteger videoMaxKeyframeIntervalDuration;
 
 /// 视频的码率，单位是 bps
 @property (nonatomic, assign) NSUInteger videoBitRate;
 
 /// 视频的最大码率，单位是 bps
-@property (nonatomic, assign, readonly) NSUInteger videoMaxBitRate;
+@property (nonatomic, readonly) NSUInteger videoMaxBitRate;
 
 /// 视频的最小码率，单位是 bps
-@property (nonatomic, assign, readonly) NSUInteger videoMinBitRate;
+@property (nonatomic, readonly) NSUInteger videoMinBitRate;
 
 ///< 分辨率
 //JK: made readonly because sessionPreset must be correlated with videoQuality, video size, bitrates, etc.

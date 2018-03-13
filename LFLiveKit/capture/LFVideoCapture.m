@@ -122,7 +122,7 @@
     fprintf(stdout,"[LFVideoCapture/setNewVideoConfiguration:]...new frame size=%dx%d\n",(int)newConfiguration.videoSize.width,(int)newConfiguration.videoSize.height);
     _configuration = newConfiguration;
     
-    //TODO: verify that GPUs video processing chain runs in its entirety in on block on video processing queue; because if this happens mid chain, it means that we could have res'd, e.g., from 720p down to 360p then up to 540p
+    //update resolution in OpenGL renderer
     runAsynchronouslyOnVideoProcessingQueue(^{
         _videoCamera.outputFrameSize_landscape = _configuration.videoSize;
         

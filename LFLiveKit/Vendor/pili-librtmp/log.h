@@ -45,6 +45,7 @@ typedef enum {
     RTMP_LOGINFO,
     RTMP_LOGDEBUG,
     RTMP_LOGDEBUG2,
+    RTMP_LOGDEBUG3,
     RTMP_LOGALL
 } RTMP_LogLevel;
 

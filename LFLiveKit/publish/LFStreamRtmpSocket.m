@@ -66,7 +66,7 @@ SAVC(mp4a);
 @property (nonatomic, assign) BOOL isConnecting;
 @property (nonatomic, assign) BOOL isReconnecting;
 
-@property (nonatomic, assign) BOOL sendVideoHead;
+//@property (nonatomic, assign) BOOL sendVideoHead;
 @property (nonatomic, assign) BOOL sendAudioHead;
 
 @end
@@ -98,13 +98,13 @@ SAVC(mp4a);
             else _reconnectCount = RetryTimesBreaken;
         }
         
-        [self addObserver:self forKeyPath:@"isSending" options:NSKeyValueObservingOptionNew context:nil];//这里改成observer主要考虑一直到发送出错情况下，可以继续发送
+//        [self addObserver:self forKeyPath:@"isSending" options:NSKeyValueObservingOptionNew context:nil];//这里改成observer主要考虑一直到发送出错情况下，可以继续发送
     }
     return self;
 }
 
 - (void)dealloc{
-    [self removeObserver:self forKeyPath:@"isSending"];
+//    [self removeObserver:self forKeyPath:@"isSending"];
 }
 
 - (void)start {
@@ -153,14 +153,14 @@ SAVC(mp4a);
     [self clean];
 }
 
+///call to send LFFrame (ie either LFVideoFrame or LFAudioFrame
 - (void)sendFrame:(LFFrame *)frame {
     if (!frame) return;
     [self.buffer appendObject:frame];
     
-    //note: reading isSending is not thread safe
-    if(!self.isSending){
-        [self sendFrame];
-    }
+    //adopt a get a frame, send a frame policy
+    //ie when we enqueue a frame to be sent, also enqueue on rtmpSendQueue a block to pop and send next waiting frame.  If congestion occurs, the enqueued send blocks will back up and then spool off quickly when congestion clears.  If congestion occurs for so long that our LFStreamingBuffer drops some frames, we've enqueued 
+    [self sendFrame];
 }
 
 - (void)setDelegate:(id<LFStreamSocketDelegate>)delegate {
@@ -168,49 +168,56 @@ SAVC(mp4a);
 }
 
 #pragma mark -- CustomMethod
-//note:isSending is read all over the place and on different threads, more, it is KVO'd below -- if observed new value is false, then it invokes sendFrame to send any waiting frames
+//enqueue block to send a frame
 - (void)sendFrame {
     __weak typeof(self) _self = self;
-     dispatch_async(self.rtmpSendQueue, ^{
-        if (!_self.isSending && _self.buffer.list.count > 0) {
+    dispatch_async(self.rtmpSendQueue, ^{
+        if (_self.buffer.list.count > 1) {
+//            printf("[LFStreamRtmpSocket/sendFrame]...(%d)\n",(int)_self.buffer.list.count);
+        }
+        
+        //if (!_self.isSending && _self.buffer.list.count > 0) {
+        if (_self.buffer.list.count > 0) {
             _self.isSending = YES;
-
+            
             if (!_self.isConnected || _self.isReconnecting || _self.isConnecting || !_rtmp){
                 _self.isSending = NO;
                 return;
             }
-
+            
             // 调用发送接口
+            //send first frame in buffer
             LFFrame *frame = [_self.buffer popFirstObject];
             if ([frame isKindOfClass:[LFVideoFrame class]]) {
-                if (!_self.sendVideoHead) {
-                    _self.sendVideoHead = YES;
-                    if(!((LFVideoFrame*)frame).sps || !((LFVideoFrame*)frame).pps){
-                        _self.isSending = NO;
-                        return;
-                    }
-                    [_self sendVideoHeader:(LFVideoFrame *)frame];
-                } else {
-                    [_self sendVideo:(LFVideoFrame *)frame];
+                //jknote: sps/pps generated for every I frame, and other code and discussions I found online pass every generated sps/pps.  Also, noted huge benefit in the wake of congestion, perhaps because when congestion occurs, Gozer (or Wowza) is starved, and processes/re-streams garbage, so maybe it is corrupted and sps/pps realign it?
+                LFVideoFrame *videoFrame = (LFVideoFrame*)frame;
+                if (videoFrame.isKeyFrame) {
+                    [_self sendVideoHeader:videoFrame];
                 }
-            } else {
+                //jknote: in original version, brnaches either sent video header or video component, never both, but in LFHardwareVideoEncoder, clearly, an I frame CMSampleBuffer received in the VTCompressionSession callback has both video data and SPS/PPS in CMSB's format description
+                [_self sendVideo:videoFrame];
+            }
+            else {
+                //if haven't sent audio header yet, do so now
                 if (!_self.sendAudioHead) {
-                    _self.sendAudioHead = YES;
                     if(!((LFAudioFrame*)frame).audioInfo){
                         _self.isSending = NO;
                         return;
                     }
+                    _self.sendAudioHead = YES;
                     [_self sendAudioHeader:(LFAudioFrame *)frame];
-                } else {
+                }
+                else {
+                    //else send the audio frame
                     [_self sendAudio:frame];
                 }
             }
-
+            
             //debug更新
             _self.debugInfo.totalFrame++;
             _self.debugInfo.dropFrame += _self.buffer.lastDropFrames;
             _self.buffer.lastDropFrames = 0;
-
+            
             _self.debugInfo.dataFlow += frame.data.length;
             _self.debugInfo.elapsedMilli = CACurrentMediaTime() * 1000 - _self.debugInfo.timeStamp;
             if (_self.debugInfo.elapsedMilli < 1000) {
@@ -220,7 +227,7 @@ SAVC(mp4a);
                 } else {
                     _self.debugInfo.capturedVideoCount++;
                 }
-
+                
                 _self.debugInfo.unSendCount = _self.buffer.list.count;
             } else {
                 _self.debugInfo.currentBandwidth = _self.debugInfo.bandwidth;
@@ -236,11 +243,20 @@ SAVC(mp4a);
             }
             
             //修改发送状态 (Modify the sending status)
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                //< 这里只为了不循环调用sendFrame方法 调用栈是保证先出栈再进栈
-                //Sterling translation: "it's only so that we don't need to keep calling the sendFrame functions. Calling stacks is to guarantee that it pops out from stack first before pushing into the stack."
-                _self.isSending = NO;
-            });
+//            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC/60), self.rtmpSendQueue, ^{
+//                //< 这里只为了不循环调用sendFrame方法 调用栈是保证先出栈再进栈
+//                //Sterling translation: "it's only so that we don't need to keep calling the sendFrame functions. Calling stacks is to guarantee that it pops out from stack first before pushing into the stack."
+//
+//                //original method:
+//                //AH: KVO is set up on property isSending, and in the handler, if isSending==NO, it calls sendFrame, and so we can send faster to cope with congestion
+//                //_self.isSending = NO;
+//                //jknote: BUT while streaming, saw several cases per session of 1, 2, and 3 second stoppages, way longer than congestion should cause.  Note, this increase didn't occur increntally, but rapidly between send events -- suddenly ~30, ~60, or ~90 frames would be spun into buffer.list. One possible explanation for this is the dependency on guard flag isSending being set on normal priority queue and change notification propagating on a signifantly taxed device.  So changed over to async-recursion and the problem was gone
+//                [self sendFrame];   //async recurse
+//            });
+        }
+        else {
+            //nothing to send
+            _self.isSending = NO;
         }
     });
 }
@@ -251,7 +267,7 @@ SAVC(mp4a);
     _isSending = NO;
     _isConnected = NO;
     _sendAudioHead = NO;
-    _sendVideoHead = NO;
+//    _sendVideoHead = NO;
     self.debugInfo = nil;
     [self.buffer removeAllObject];
     self.retryTimes4netWorkBreaken = 0;
@@ -363,6 +379,7 @@ Failed:
     }
 }
 
+//hmm: it appears in LFHardwareVideoEncoder that when SPS/PPS are parsed from a
 - (void)sendVideoHeader:(LFVideoFrame *)videoFrame {
 
     unsigned char *body = NULL;
@@ -373,7 +390,7 @@ Failed:
     NSInteger sps_len = videoFrame.sps.length;
     NSInteger pps_len = videoFrame.pps.length;
 
-    body = (unsigned char *)malloc(rtmpLength);
+    body = (unsigned char *)malloc(rtmpLength);  //why malloc instead of using a local array?
     memset(body, 0, rtmpLength);
 
     body[iIndex++] = 0x17;
@@ -400,7 +417,7 @@ Failed:
     body[iIndex++] = 0x01;
     body[iIndex++] = (pps_len >> 8) & 0xff;
     body[iIndex++] = (pps_len) & 0xff;
-    memcpy(&body[iIndex], pps, pps_len);
+    memcpy(&body[iIndex], pps, pps_len); 
     iIndex += pps_len;
 
     [self sendPacket:RTMP_PACKET_TYPE_VIDEO data:body size:iIndex nTimestamp:0];
@@ -537,7 +554,7 @@ Failed:
         _rtmp = NULL;
     }
     _sendAudioHead = NO;
-    _sendVideoHead = NO;
+//    _sendVideoHead = NO;
     
     if (self.delegate && [self.delegate respondsToSelector:@selector(socketStatus:status:)]) {
         [self.delegate socketStatus:self status:LFLiveRefresh];
@@ -569,14 +586,14 @@ void ConnectionTimeCallback(PILI_CONNECTION_TIME *conn_time, void *userData) {
     }
 }
 
-#pragma mark -- Observer
--(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context{
-    if([keyPath isEqualToString:@"isSending"]){
-        if(!self.isSending){
-            [self sendFrame];
-        }
-    }
-}
+//#pragma mark -- Observer
+//-(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context{
+//    if([keyPath isEqualToString:@"isSending"]){
+//        if(!self.isSending){
+//            [self sendFrame];
+//        }
+//    }
+//}
 
 #pragma mark -- Getter Setter
 
@@ -598,7 +615,8 @@ void ConnectionTimeCallback(PILI_CONNECTION_TIME *conn_time, void *userData) {
 
 - (dispatch_queue_t)rtmpSendQueue{
     if(!_rtmpSendQueue){
-        _rtmpSendQueue = dispatch_queue_create("com.youku.LaiFeng.RtmpSendQueue", NULL);
+        dispatch_queue_attr_t priorityAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, -6);
+        _rtmpSendQueue = dispatch_queue_create("com.youku.LaiFeng.RtmpSendQueue", priorityAttribute);
     }
     return _rtmpSendQueue;
 }

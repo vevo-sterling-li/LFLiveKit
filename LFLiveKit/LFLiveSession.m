@@ -38,9 +38,17 @@
 @property (nonatomic, strong) id<LFAudioEncoding> audioEncoder;
 /// 视频编码
 //@property (nonatomic, strong) id<LFVideoEncoding> videoEncoder;
-@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderLow;
-@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderMedium;
-@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderHigh;
+//@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderLow;
+//@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderMedium;
+//@property(nonatomic,strong) id<LFVideoEncoding> videoEncoderHigh;
+@property(nonatomic,strong) LFHardwareVideoEncoder *videoEncoderLow;
+@property(nonatomic,strong) LFHardwareVideoEncoder *videoEncoderMedium;
+@property(nonatomic,strong) LFHardwareVideoEncoder *videoEncoderHigh;
+
+@property(nonatomic,strong) dispatch_queue_t resolutionChangeQ;
+@property(atomic,assign) BOOL isDrainingPreviousEncoder;
+@property(nonatomic,strong) NSMutableArray<LFVideoFrame*> *framesAtNewResolutionWaitingToBeSent;
+
 /// 上传
 @property (nonatomic, strong) id<LFStreamSocket> socket;
 
@@ -87,13 +95,17 @@
     return [self initWithAudioConfiguration:audioConfiguration videoConfiguration:videoConfiguration captureType:LFLiveCaptureDefaultMask];
 }
 
-- (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration captureType:(LFLiveCaptureTypeMask)captureType{
+- (nullable instancetype)initWithAudioConfiguration:(nullable LFLiveAudioConfiguration *)audioConfiguration
+                                 videoConfiguration:(nullable LFLiveVideoConfiguration *)videoConfiguration
+                                        captureType:(LFLiveCaptureTypeMask)captureType {
     if((captureType & LFLiveCaptureMaskAudio || captureType & LFLiveInputMaskAudio) && !audioConfiguration) @throw [NSException exceptionWithName:@"LFLiveSession init error" reason:@"audioConfiguration is nil " userInfo:nil];
     if((captureType & LFLiveCaptureMaskVideo || captureType & LFLiveInputMaskVideo) && !videoConfiguration) @throw [NSException exceptionWithName:@"LFLiveSession init error" reason:@"videoConfiguration is nil " userInfo:nil];
+    
     if (self = [super init]) {
         _audioConfiguration = audioConfiguration;
         
-        //since we do not allow changing frame rate midstream, create low, med, high video configurations based on target frame rate (reflected by 1, 2, or 3)
+        //to support adaptive video resolution, create a video encoder for each resolution
+        //since changing frame rate is not supported, create low, med, high video configurations based on target frame rate (reflected by value 1, 2, or 3)
         switch (videoConfiguration.videoQuality) {
             case LFLiveVideoQuality_Low1:
                 [self createVideoConfigurationsAtResolution1];
@@ -138,8 +150,15 @@
                 break;
         }
         
+        //default to zero adaptivity
         _previousVideoConfiguration = nil;
         _adaptiveBitrate = NO;
+        _adaptiveResolution = NO;
+        dispatch_queue_attr_t priorityAttribute = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, -6);
+        _resolutionChangeQ = dispatch_queue_create("com.youku.LaiFeng.resolutionChangeQ", priorityAttribute);
+        _isDrainingPreviousEncoder = NO;
+        _framesAtNewResolutionWaitingToBeSent = [[NSMutableArray alloc] initWithCapacity:45];    //TODO: configure # frames VTCompressionSession holds on to?
+        
         _captureType = captureType;
     }
     return self;
@@ -161,7 +180,9 @@
     _audioCaptureSource.running = NO;
 }
 
-#pragma mark -- CustomMethod
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark -- start/stop
 - (void)startLive:(LFLiveStreamInfo *)streamInfo {
     if (!streamInfo) return;
     _streamInfo = streamInfo;
@@ -177,6 +198,8 @@
 }
 
 
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - ?
 ///these seem unused
 - (void)pushVideo:(nullable CVPixelBufferRef)pixelBuffer {
     if (self.captureType & LFLiveInputMaskVideo) {
@@ -194,18 +217,17 @@
     }
 }
 
+
 //-----------------------------------------------------------------------------------------------------
-//frame encoding callbacks
+//send encoded frame to client
 #pragma mark -- PrivateMethod
 - (void)pushSendBuffer:(LFFrame*)frame{
     if(self.relativeTimestamps == 0){
         self.relativeTimestamps = frame.timestamp;
     }
     
-    frame.timestamp = [self uploadTimestamp:frame.timestamp];
-//    fprintf(stdout,"[LFLiveSession/pushSendBuffer:]...frame.timestamp=%llu\n",frame.timestamp);
-    
-    [self.socket sendFrame:frame];
+    frame.timestamp = [self uploadTimestamp: frame.timestamp];
+    [self.socket sendFrame: frame];
 }
 
 
@@ -213,9 +235,8 @@
 //called when capture session instances have readied a new frame for encoding
 #pragma mark -- CaptureDelegate
 - (void)captureOutput:(nullable LFAudioCapture *)capture audioData:(nullable NSData*)audioData {
-//    fprintf(stdout,"[LFLiveSession/captureOutput:audioData:}...\n");
     if (self.uploading)
-        [self.audioEncoder encodeAudioData:audioData timeStamp:NOW];
+        [self.audioEncoder encodeAudioData:audioData timeStamp: NOW];
 }
 
 - (void)captureOutput:(nullable LFVideoCapture *)capture pixelBuffer:(nullable CVPixelBufferRef)pixelBuffer {
@@ -225,15 +246,10 @@
     }
 }
 
-
 ///call to target encoder appropriate to pixel buffer resolution
 -(void)encodePixelBuffer:(nonnull CVPixelBufferRef)pixelBuffer timeStamp:(uint64_t)timestamp {
-//    [self.videoEncoder setVideoBitRate: _videoConfiguration.videoBitRate];
-//    [self.videoEncoder encodeVideoData: pixelBuffer timeStamp: timestamp];
-    
-    //select correct encoder based on image resolution (720p, 540p, 360p, ie based on height param only)
+    //select correct encoder for pixel buffer based on its image resolution (720p, 540p, 360p, ie based on height param only)
     int bufferHeight = (int) CVPixelBufferGetHeight(pixelBuffer);
-    fprintf(stdout,"[LFLiveSession/encodePixelBuffer:timestamp:]...pixel buffer height=%d\n",bufferHeight);
     if (bufferHeight == _videoConfigurationLow.videoSize.height) {
         //update encoder video bitrate based on current 'low' configuration, then encode
         [self.videoEncoderLow setVideoBitRate: _videoConfigurationLow.videoBitRate];
@@ -253,29 +269,55 @@
         assert(0);  //for debugging
     }
     
-    //if we just changed video configuration, and if this frame to be encoded is the first frame from the render pipeline with resolution matching the new configuration, then previousVideoConfiguration is set and we need to reset its corresponding video encoder so that it is ready to start on a key frame if we return to the previous resolution
+    //handle video resolution transition, if one in progress
+    //need to trap when first frame of a new resolution comes off the renderer pipeline because we need to transmit all frames at previous resolution before transmit first frame at new resolution
+    //SO on receiving from render pipeline first frame at new resolution, do:
+    //  1) set flag so that if encoded frames at new resolution are received in videoEncoder:videoFrame… before all frames at previous resolution are encoded and transmitted, they are held in array _framesAtNewResolutionWaitingToBeSent
+    //  2) tell encoder of frames of previous resolution to complete all frames
+    //FWIW, it's uncertain that any frames at new resolution will be encoded before all frames at previous resolution are complete because encoder of frames at new resolution will be buffering frames for reference for encooding P frames
     if (bufferHeight == _videoConfiguration.videoSize.height && _previousVideoConfiguration) {
-        fprintf(stdout,"..resetting previous video configuration video encoder session..\n");
-        switch (_previousVideoConfiguration.videoQuality) {
+        fprintf(stdout,"[LFLiveSession/encodePixelBuffer:timeStamp:]...detected first frame from render pipeline at new resolution..\n");
+        //render pipeline won't produce any more frames at previous resolution
+        @synchronized(self) {
+            _isDrainingPreviousEncoder = YES;
+        }
+        
+        LFHardwareVideoEncoder *previousVideoEncoder;
+        switch(_previousVideoConfiguration.videoQuality) {
             case LFLiveVideoQuality_Low1:
             case LFLiveVideoQuality_Low2:
             case LFLiveVideoQuality_Low3:
-                [self.videoEncoderLow resetCompressionSession];
+                previousVideoEncoder = self.videoEncoderLow;
                 break;
             case LFLiveVideoQuality_Medium1:
             case LFLiveVideoQuality_Medium2:
             case LFLiveVideoQuality_Medium3:
-                [self.videoEncoderMedium resetCompressionSession];
+                previousVideoEncoder = self.videoEncoderMedium;
                 break;
             case LFLiveVideoQuality_High1:
             case LFLiveVideoQuality_High2:
             case LFLiveVideoQuality_High3:
-                [self.videoEncoderHigh resetCompressionSession];
+                previousVideoEncoder = self.videoEncoderHigh;
                 break;
             default:
-                break;
+                assert(0);
         }
         
+        //complete encoding all frames of previous resolution. The call to a VTCompressionSession to complete all frames BLOCKS until all frames have been emitted, so have to do it on a special dispatchQ
+        dispatch_async(_resolutionChangeQ, ^{
+            printf("..(LFLiveSession/encodePixelBuffer:timeStamp:)..<resolutionChangeQ>: telling previous encoder to complete frames..\n");
+            [previousVideoEncoder completeAllFrames];   //blocks until all frames have been emitted
+            printf("..(LFLiveSession/encodePixelBuffer:timeStamp:)..<resolutionChangeQ>: previous encoder completed frames..\n");
+            
+            @synchronized(self) {
+                _isDrainingPreviousEncoder = NO;
+            }
+            
+            //reset encoder to be ready for next use
+            //[previousVideoEncoder resetCompressionSession];
+        });
+        
+        //nil out _previousVideoConfiguration so that we don't enter this if-block again!
         _previousVideoConfiguration = nil;
     }
 }
@@ -303,8 +345,37 @@
         
         //AVAlignment enforces that, when capturing both audio and video, that we have received both an encoded audio frame and an encoded video frame -- or more likely that we have captured both..that the capture session has provided both an audio and video frame -- is there some configuration here that requires this condition, or is this simply a sanity check that both are working, or is that we don't want to send video that doesn't have audio yet, and vice versa?
         if (self.AVAlignment) {
-            //TODO: parse frame size from sps
-            [self pushSendBuffer:frame];
+            //video frames arrive here from a video encoder
+            //..but we have 3 video encoders and if resolution change is allowed, then an arriving frame could be either:
+            //  1) a frame at the current resolution arriving outside of any resolution transition
+            //  2) a frame at the current resolution arriving during a resolution transition, ie while draining previous resolution encoder and sending those frames
+            //  3) a frame at the previous resolution that was drained from encoder of previous resolution frames
+            
+            if (frame.height != _videoConfiguration.videoSize.height) {
+                //frame was drained from encoder of previous resolution and should be sent ASAP
+                printf("[LFLiveSession/videoEncoder:videoFrame:]...sending frame of previous resolution\n");
+                [self pushSendBuffer:frame];
+            }
+            else {
+                @synchronized(self) {
+                    if (_isDrainingPreviousEncoder) {
+                        //hold frame till all previous resolution frames are sent
+                        printf("[LFLiveSession/videoEncoder:videoFrame:]...holding frame of new resolution during resolution transition\n");
+                        [_framesAtNewResolutionWaitingToBeSent addObject:frame];
+                    }
+                    else {
+                        //send frame, but send any we are holding from a resolution transition
+                        while ([_framesAtNewResolutionWaitingToBeSent count] > 0) {
+                            printf("[LFLiveSession/videoEncoder:videoFrame:]...popping held frame\n");
+                            LFVideoFrame* heldFrame = [_framesAtNewResolutionWaitingToBeSent objectAtIndex:0];
+                            [self pushSendBuffer:heldFrame];
+                            [_framesAtNewResolutionWaitingToBeSent removeObjectAtIndex:0];
+                        }
+                        
+                        [self pushSendBuffer:frame];
+                    }
+                }
+            }
         }
     }
 }
@@ -351,6 +422,9 @@
     }
 }
 
+///status assesses (if enabled) whether to dynamically adjust video bitrate and resolution based on send queue feedback.  Bitrate increases/decreases follow a 1 step forward, 2 steps back algorithm
+#define VIDEO_BITRATE_INCR_STEP 100 * 1000
+#define VIDEO_BITRATE_DECR_STEP -2*VIDEO_BITRATE_INCR_STEP
 - (void)socketBufferStatus:(nullable id<LFStreamSocket>)socket status:(LFLiveBuffferState)status {
     if((self.captureType & LFLiveCaptureMaskVideo || self.captureType & LFLiveInputMaskVideo) && self.adaptiveBitrate){
 //        fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...\n");
@@ -359,14 +433,15 @@
         static int timesInARowAtMinOrMaxBitrate = 0;
         
         if (status == LFLiveBuffferDecline) {
-            //frame queue length is decreasing or zdro, so we can up video bit rate
+            //frame queue length is decreasing or zero, so we can up video bit rate
+            //increase linearly, not geometrically
             if (currentVideoBitRate < _videoConfiguration.videoMaxBitRate) {
-                _videoConfiguration.videoBitRate = MIN(currentVideoBitRate + 100 * 1000, _videoConfiguration.videoMaxBitRate);
+                _videoConfiguration.videoBitRate = MIN(currentVideoBitRate + VIDEO_BITRATE_INCR_STEP, _videoConfiguration.videoMaxBitRate);
                 //DO NOT adjust encoder video bitrate here!
                 fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...increasing video bitrate from %d to %d\n",(int)currentVideoBitRate,(int)_videoConfiguration.videoBitRate);
                 timesInARowAtMinOrMaxBitrate = 0;
             }
-            else if (timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
+            else if (self.adaptiveResolution && timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
                 fprintf(stdout,"..at max bitrate for 3 times in a row, checking whether to increase resolution...\n");
                 //at max bitrate for current resolution for 3 times in a row
                 
@@ -383,13 +458,14 @@
                 
                     fprintf(stdout,"..increasing video resolution to %dx%d\n",(int)newVidConfig.videoSize.width,(int)newVidConfig.videoSize.height);
                     
-                    //start higher resolution configuration at its min bitrate
-                    newVidConfig.videoBitRate = newVidConfig.videoMinBitRate;
+                    //start new higher resolution configuration at current configuration bitrate
+                    newVidConfig.videoBitRate = _videoConfiguration.videoBitRate;
                     
                     //reset times at max counter
                     timesInARowAtMinOrMaxBitrate = 0;
                     
                     //update LFVideoCapture instance configuration
+                    //note: changing video configuration propagates changes to OpenGL renderer, but there are still frames in the renderer and in the encoder
                     [self.videoCaptureSource setNewVideoConfiguration: newVidConfig];
                     
                     //update our own and track previous
@@ -402,16 +478,18 @@
                 //at max bitrate for current resolution
                 timesInARowAtMinOrMaxBitrate++;
             }
-        } else {
+        }
+        else {
             //status == LFLiveBufferIncrease
             //frame queue length is increasing, so we need to lower video bit rate
+            //decrease linearly, not geometrically, but take 2 steps back
             if (currentVideoBitRate > _videoConfiguration.videoMinBitRate) {
-                _videoConfiguration.videoBitRate = MAX(currentVideoBitRate - 100 * 1000, _videoConfiguration.videoMinBitRate);
+                _videoConfiguration.videoBitRate = MAX(currentVideoBitRate + VIDEO_BITRATE_DECR_STEP, _videoConfiguration.videoMinBitRate);
                 //DO NOT adjust encoder video bitrate here!
                 fprintf(stdout,"[LFLiveSession/socketBufferStatus:status:]...decreasing video bitrate from %d to %d\n",(int)currentVideoBitRate,(int)_videoConfiguration.videoBitRate);
                 timesInARowAtMinOrMaxBitrate = 0;
             }
-            else if (timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
+            else if (self.adaptiveResolution && timesInARowAtMinOrMaxBitrate > 1) {   //logic ==> if timesInRowAtMinOrMax is 2, then we've been there 3 times
                 fprintf(stdout,"..at max bitrate for 3 times in a row, checking whether to decrease resolution...\n");
                 //at min bitrate for current resolution for 3 times in a row
                 
@@ -428,13 +506,14 @@
                     
                     fprintf(stdout,"..decreasing video resolution to %dx%d\n",(int)newVidConfig.videoSize.width,(int)newVidConfig.videoSize.height);
                     
-                    //start lower resolution configuration at its max bitrate
-                    newVidConfig.videoBitRate = newVidConfig.videoMaxBitRate;
+                    //start new higher resolution configuration at current configuration bitrate
+                    newVidConfig.videoBitRate = _videoConfiguration.videoBitRate;
                     
                     //reset times at max counter
                     timesInARowAtMinOrMaxBitrate = 0;
                     
                     //update LFVideoCapture instance configuration
+                    //note: changing video configuration propagates changes to OpenGL renderer, but there are still frames in the renderer and in the encoder
                     [self.videoCaptureSource setNewVideoConfiguration: newVidConfig];
                     
                     //update our own and track previous

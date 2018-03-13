@@ -10,7 +10,9 @@
 #import "NSMutableArray+LFAdd.h"
 
 
-static const NSUInteger defaultSortBufferMaxCount = 5;///< 排序10个内 (Sort within 10)
+//---private constants---
+//static const NSUInteger defaultSortBufferMaxCount = 45;///< 排序10个内 (Sort within 10)
+static const NSUInteger listBufferOptimalSize = 24;    //~ 8 frames as there are ~3 audio frames per every ~2 video frame
 
 //static const NSUInteger defaultUpdateInterval = 1;///< 更新频率为1s
 //static const NSUInteger defaultCallBackInterval = 5;///< 5s计时一次
@@ -23,13 +25,27 @@ static const NSTimeInterval defaultUpdateInterval_f = defaultCallBackInterval_f 
 
 static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为600
 
+
+
+//=====================================================================================================
+/*
+ LFStreamingBuffer maintains a 2 level buffer.
+ 
+ The first level buffer ensures against frames arriving from the encoder out of sequence -- but I can't find evidence that this is required or correct.  One imagines that this could happen if the encoder is encoding multiple frames concurrently, but I find no documentation that suggests this is the case.  Worse, encoder's have a configurable option to allow frame reordering which is required to allow for B frames. But if this is the case, the decoder requires receiving frames in encoder output order, so sorting them here is incorrect.
+ Fortunately, we do not want B frame encoding so the allow frame reordering option is off.
+ 
+ The second level buffer is for enqueing frames to be sent -- but the implementation here doesn't require a threshold for buffering.
+ */
+ 
 @interface LFStreamingBuffer (){
     dispatch_semaphore_t _lock;
 }
 
-@property (nonatomic, strong) NSMutableArray <LFFrame *> *sortList;
-@property (nonatomic, strong, readwrite) NSMutableArray <LFFrame *> *list;
+//@property (nonatomic, strong) NSMutableArray <LFFrame *> *sortList;
+//@property (nonatomic, strong, readwrite) NSMutableArray <LFFrame *> *list;
+@property (nonatomic, strong, readwrite) NSMutableArray <LFFrame *> *initialList;
 @property (nonatomic, strong) NSMutableArray *thresholdList;
+@property (nonatomic, assign) BOOL initialBufferFull;
 
 /** 处理buffer缓冲区情况 (handling buffer conditions) */
 //@property (nonatomic, assign) NSInteger currentInterval;
@@ -39,59 +55,125 @@ static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为6
 //@property (nonatomic, assign) NSInteger updateInterval;
 @property (nonatomic, assign) NSTimeInterval updateInterval_f;
 @property (nonatomic, assign) BOOL startTimer;
+@property (nonatomic,strong) dispatch_queue_t tickQ;
+@property (nonatomic,strong) dispatch_source_t tickS;
 
 @end
 
+
 @implementation LFStreamingBuffer
 
+#pragma mark - init
 - (instancetype)init {
     if (self = [super init]) {
+        _initialBufferFull = NO;
         
+        //lock synchronizes access to 'list' and 'initialList'
         _lock = dispatch_semaphore_create(1);
+        _list = [[NSMutableArray alloc] init];
+        _initialList = [[NSMutableArray alloc] init];
+        
+        //for tracking buffer size
+        _thresholdList = [[NSMutableArray alloc] init];
+        
+        //track 'list' size for adaptive streaming quality
 //        self.updateInterval = defaultUpdateInterval;
-        self.updateInterval_f = defaultUpdateInterval_f;
+        _updateInterval_f = defaultUpdateInterval_f;
 //        self.callBackInterval = defaultCallBackInterval;
-        self.callBackInterval_f = defaultCallBackInterval_f;
-        self.maxCount = defaultSendBufferMaxCount;
-        self.lastDropFrames = 0;
-        self.startTimer = NO;
+        _callBackInterval_f = defaultCallBackInterval_f;
+        _startTimer = NO;
+        _lastDropFrames = 0;
+        
+        //set limit on 'list' size which if over, then drop old frames
+        _maxCount = defaultSendBufferMaxCount;
+        
+        _tickQ = dispatch_queue_create("com.lflivekit.streamingBufferTickQ", DISPATCH_QUEUE_SERIAL);
+        _tickS = nil;
     }
     return self;
 }
 
 - (void)dealloc {
+    if (_tickS) {
+        dispatch_source_cancel(_tickS);
+    }
 }
 
-#pragma mark -- Custom
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - sort buffer ops
 ///main function to call to add a frame to the streaming frame buffer
 - (void)appendObject:(LFFrame *)frame {
     if (!frame) return;
-    
-    //initiate the regular-interval timer that evaluates buffer state to recommend video bitrate adjustments
-    if (!_startTimer) {
-        _startTimer = YES;
-        [self tick];
-    }
 
     dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);
     
-    //frame buffer private property 'sortList' is required because frame encoding could be concurrent and, since some frames may encode faster than others, video frames may be delivered out of sequence. Once the buffer is full, it is sorted and the first (oldest) frame is popped and appended to public property 'list' (which maintains the ordered list of frames to be sent)
-    //TODO: since we are only inserting one frame, an insertion sort would be much faster (O(n) vs O(nlogn)
-    [self.sortList addObject:frame];
-    if (self.sortList.count >= defaultSortBufferMaxCount) {
-        ///< 排序 (sort)
-        //TODO: insertion sort on add
-		[self.sortList sortUsingFunction:frameDataCompare context:nil];
-        /// 丢帧 (drop the frame)
+    //3 states to consider:
+    //  1) we just started streaming and so need to build up a short buffer before we offer frames to to send
+    //  2) short buffer is filled and so move those buffere frames to to-be-sent buffer queue 'list'
+    //  3) list is providing frames, so new frames are appended to list
+    
+    if (_initialBufferFull) {
+        //add frame to list
+        [_list addObject:frame];
+//        NSInteger idx = (NSInteger)(_list.count) - 1;
+//        while (idx >= 0 && frame.timestamp < [_list objectAtIndex:(NSUInteger)idx].timestamp) { idx--; }
+//        [_list insertObject:frame atIndex:(NSUInteger)(idx + 1)];
+        
+        /// 丢帧 (limit size of `list` queue of frames to be sent)
         [self removeExpireFrame];
-        /// 添加至缓冲区 (add to the buffer)
-        LFFrame *firstFrame = [self.sortList lfPopFirstObject];
-
-        if (firstFrame) [self.list addObject:firstFrame];
+        
+        if (!_startTimer) {
+            //initiate regular interval timer that on fire evaluates buffer state to recommend video bitrate adjustments
+            _startTimer = YES;
+            //[self tick];
+            
+            //set up a timer in GCD running on a dispatch source
+            _tickS = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _tickQ);
+            dispatch_source_set_timer(_tickS, dispatch_time(DISPATCH_TIME_NOW,0), (int64_t)(self.updateInterval_f * NSEC_PER_SEC), 0);
+            __weak typeof(self) weakSelf = self;
+            dispatch_source_set_event_handler(_tickS, ^{
+                [weakSelf tick];
+            });
+            dispatch_resume(_tickS);
+        }
+    }
+    else if (_initialList.count >= listBufferOptimalSize) {
+        //pass frames from initialList to list
+        _initialBufferFull = YES;
+        _list = _initialList;
+        _initialList = nil;
+        
+        [_list addObject:frame];
+//        NSInteger idx = (NSInteger)(_list.count) - 1;
+//        while (idx >= 0 && frame.timestamp < [_list objectAtIndex:(NSUInteger)idx].timestamp) { idx--; }
+//        [_list insertObject:frame atIndex:(NSUInteger)(idx + 1)];
+    }
+    else {
+        //add frame to initial list buffer
+        [_initialList addObject:frame];
+//        NSInteger idx = (NSInteger)(_initialList.count) - 1;
+//        while (idx >= 0 && frame.timestamp < [_initialList objectAtIndex:(NSUInteger)idx].timestamp) { idx--; }
+//        [_initialList insertObject:frame atIndex:(NSUInteger)(idx + 1)];
     }
     dispatch_semaphore_signal(_lock);
+    
 }
 
+NSInteger frameDataCompare(id obj1, id obj2, void *context){
+    LFFrame *frame1 = (LFFrame *)obj1;
+    LFFrame *frame2 = (LFFrame *)obj2;
+    
+    if (frame1.timestamp == frame2.timestamp)
+        return NSOrderedSame;
+    else if (frame1.timestamp > frame2.timestamp)
+        return NSOrderedDescending;
+    return NSOrderedAscending;
+}
+
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - list buffer pop
 - (LFFrame *)popFirstObject {
     dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);
     LFFrame *firstFrame = [self.list lfPopFirstObject];
@@ -99,13 +181,11 @@ static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为6
     return firstFrame;
 }
 
-- (void)removeAllObject {
-    dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);
-    [self.list removeAllObjects];
-    dispatch_semaphore_signal(_lock);
-}
 
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - expire
 - (void)removeExpireFrame {
+    //assert: caller has _lock
     if (self.list.count < self.maxCount) return;
 
     NSArray *pFrames = [self expirePFrames];///< 第一个P到第一个I之间的p帧 (The first P to the first I p frames)
@@ -129,6 +209,7 @@ static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为6
 
 ///scrape P all frames before an I frame
 - (NSArray *)expirePFrames {
+    //assert: caller has _lock
     NSMutableArray *pframes = [[NSMutableArray alloc] init];
     for (NSInteger index = 0; index < self.list.count; index++) {
         LFFrame *frame = [self.list objectAtIndex:index];
@@ -151,6 +232,7 @@ static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为6
 ///scrapes one I frame from the front of list
 //ASSERT: if called from removeExpireFrames, then on entry list is >600 I frames
 - (NSArray *)expireIFrames {
+    //assert: caller has _lock
     NSMutableArray *iframes = [[NSMutableArray alloc] init];
     uint64_t timeStamp = 0;
     for (NSInteger index = 0; index < self.list.count; index++) {
@@ -166,83 +248,57 @@ static const NSUInteger defaultSendBufferMaxCount = 600;///< 最大缓冲区为6
     return iframes;
 }
 
-NSInteger frameDataCompare(id obj1, id obj2, void *context){
-    LFFrame *frame1 = (LFFrame *)obj1;
-    LFFrame *frame2 = (LFFrame *)obj2;
 
-    if (frame1.timestamp == frame2.timestamp)
-        return NSOrderedSame;
-    else if (frame1.timestamp > frame2.timestamp)
-        return NSOrderedDescending;
-    return NSOrderedAscending;
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - list buffer clean up
+- (void)removeAllObject {
+    dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);
+    [_list removeAllObjects];
+    dispatch_semaphore_signal(_lock);
 }
 
-- (LFLiveBuffferState)currentBufferState {
-    NSInteger currentCount = 0;
-    NSInteger increaseCount = 0;
-    NSInteger decreaseCount = 0;
 
-    for (NSNumber *number in self.thresholdList) {
-        //count currentCount == 0 and number == previous count for decrease
-        if (number.integerValue > currentCount) {
-            increaseCount++;
-        } else{
-            decreaseCount++;
-        }
-        currentCount = [number integerValue];
-    }
-
-    //increase/decrease tendency must be unanimous to report
-    if (increaseCount >= defaultNumFrameQueueCountSnapshots) { //self.callBackInterval) {
-        return LFLiveBuffferIncrease;
-    }
-    else if (decreaseCount >= defaultNumFrameQueueCountSnapshots) { //self.callBackInterval) {
-        return LFLiveBuffferDecline;
-    }
-    //else unknown
-    return LFLiveBuffferUnknown;
-}
-
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- Setter Getter
-- (NSMutableArray *)list {
-    if (!_list) {
-        _list = [[NSMutableArray alloc] init];
-    }
-    return _list;
-}
+//- (NSMutableArray *)list {
+//    if (!_list) {
+//        _list = [[NSMutableArray alloc] init];
+//    }
+//    return _list;
+//}
 
-- (NSMutableArray *)sortList {
-    if (!_sortList) {
-        _sortList = [[NSMutableArray alloc] init];
-    }
-    return _sortList;
-}
+//- (NSMutableArray *)sortList {
+//    if (!_sortList) {
+//        _sortList = [[NSMutableArray alloc] init];
+//    }
+//    return _sortList;
+//}
 
-- (NSMutableArray *)thresholdList {
-    if (!_thresholdList) {
-        _thresholdList = [[NSMutableArray alloc] init];
-    }
-    return _thresholdList;
-}
+//- (NSMutableArray *)thresholdList {
+//    if (!_thresholdList) {
+//        _thresholdList = [[NSMutableArray alloc] init];
+//    }
+//    return _thresholdList;
+//}
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - assess buffer performance
 #pragma mark -- 采样
 //each tick calls records the current size of frame queue 'list' in thresholdList
 - (void)tick {
-//    fprintf(stdout,"[LFStreamingBuffer/tick]...list=%s\n",self.list.description.UTF8String);
+//    fprintf(stdout,"[LFStreamingBuffer/tick]...list.count=%d\n",(int)self.list.count);
     /** 采样 3个阶段   如果网络都是好或者都是差给回调 (Sampling 3 stages If the network is good or both are poor callbacks)*/
     _currentInterval_f += self.updateInterval_f;
 
     //capture current size of frame queue 'list'
-    //synchronize access to list.count
-    dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);
-    [self.thresholdList addObject:@(self.list.count)];
+    dispatch_semaphore_wait(_lock, DISPATCH_TIME_FOREVER);      //synchronize access to list.count
+    [_thresholdList addObject:@(self.list.count)];
     dispatch_semaphore_signal(_lock);
     
-    
-    //evaluate frame queue 'list': are the number of frames to be sent increasing or decreasing over time?
-    if (self.currentInterval_f >= self.callBackInterval_f) {
-//        fprintf(stdout,"  thresholdList=%s\n",self.thresholdList.description.UTF8String);
-        
+    //evaluate to-be-sent-frame queue 'list': are the number of frames to be sent increasing or decreasing over time?
+    if (_currentInterval_f >= _callBackInterval_f) {
+        //assess buffer
         LFLiveBuffferState state = [self currentBufferState];
         
         //note: 'buffer' state 'increase' vs 'decrease' reflects frame queue size trend, NOT recommendation
@@ -258,14 +314,48 @@ NSInteger frameDataCompare(id obj1, id obj2, void *context){
 
         //reset interval and thresholdList
         self.currentInterval_f = 0;
-        [self.thresholdList removeAllObjects];
+        [_thresholdList removeAllObjects];
     }
     
-    __weak typeof(self) _self = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.updateInterval_f * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        __strong typeof(_self) self = _self;
-        [self tick];
-    });
+    //JK: now using timer
+//    __weak typeof(self) _self = self;
+//    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(self.updateInterval_f * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+//        __strong typeof(_self) self = _self;
+//        [self tick];
+//    });
 }
+
+- (LFLiveBuffferState)currentBufferState {
+    if (_thresholdList.count < defaultNumFrameQueueCountSnapshots) {
+        return LFLiveBuffferUnknown;
+    }
+    
+    NSInteger currentCount = [[_thresholdList objectAtIndex:0] integerValue];
+    NSInteger increaseCount = 0;
+    NSInteger decreaseCount = 0;
+    
+    for (int idx=1; idx< _thresholdList.count; idx++) {
+        NSInteger number = [[_thresholdList objectAtIndex:idx] integerValue];
+        if (number > currentCount) {
+            //buffer size increased between ticks
+            increaseCount++;
+        } else {
+            //buffer size decreased or was the same between ticks
+            decreaseCount++;
+        }
+        currentCount = number;
+    }
+    
+    //increase/decrease tendency must be unanimous
+    if (increaseCount >= defaultNumFrameQueueCountSnapshots - 1) { //self.callBackInterval) {
+        return LFLiveBuffferIncrease;
+    }
+    else if (decreaseCount >= defaultNumFrameQueueCountSnapshots - 1) { //self.callBackInterval) {
+        return LFLiveBuffferDecline;
+    }
+    //else unknown
+    return LFLiveBuffferUnknown;
+}
+
 
 @end

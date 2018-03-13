@@ -35,7 +35,7 @@ typedef NS_ENUM (NSUInteger, LFLiveBuffferState) {
 /** current frame buffer */
 @property (nonatomic, strong, readonly) NSMutableArray <LFFrame *> *_Nonnull list;
 
-/** buffer count max size default 1000 */
+/** buffer count max size default 600 */
 @property (nonatomic, assign) NSUInteger maxCount;
 
 /** count of drop frames in last time */

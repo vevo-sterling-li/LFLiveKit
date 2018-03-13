@@ -13,6 +13,8 @@
 @implementation LFLiveVideoConfiguration
 
 
+
+
 /*  According to several sources:
     -0.1 bits/pixel is considered very good quality
     -0.03 bits/pixel is considered very poor quality
@@ -132,18 +134,43 @@
     //compute video size based on supported session preset (method also takes into account whether landscape)
     _videoSize = [self captureOutVideoSize];
     
+    //set limits on key frame interval; both max frame interval and max interval duration will be enforced
+    //both but we can also set either to 0 to let encoder decide
     //several sources concur that max key frame interval is twice frame rate
-    self.videoMaxKeyframeInterval = self.videoFrameRate*2;
+    _videoMaxKeyframeInterval = 0;      //self.videoFrameRate*2;
+    _videoMaxKeyframeIntervalDuration = 0;
     
     //set bitrates (which are size and frame rate dependent)
     //bits/pixel for poorest quality (min) and highest quality (max)
-    //NOTE: bits/pixels levels could be set per resolution...
-    double bitsPerPixelMin = 0.05;
-    double bitsPerPixelMax = 0.12;
+    double bitsPerPixelMin, bitsPerPixelMax;
+    
+    switch (_sessionPreset) {
+        case LFCaptureSessionPreset360x640:
+            //at 0.1 bits/pixel, min bitrate is 691200 kbps at 360p
+            bitsPerPixelMin = 0.1;
+            //at 0.21 bits/pixel, max bitrate is 1451520 kbps at 360p
+            bitsPerPixelMax = 0.21;
+            break;
+        case LFCaptureSessionPreset540x960:
+            //at 0.07 bits/pixel, min bitrate is 1088640 kbps at 540p
+            bitsPerPixelMin = 0.07;
+            //at 0.19 bits/pixel, max bitrate is 2799360 kbps at 540p
+            bitsPerPixelMax = 0.18;
+            break;
+        case LFCaptureSessionPreset720x1280:
+            //at 0.04 bits/pixel, min bitrate is 1105920 kbps at 720p
+            bitsPerPixelMin = 0.04;
+            //at 0.14 bits/pixel, max bitrate is 3870720 kbps at 720p
+            bitsPerPixelMax = 0.14;
+            break;
+        default:
+            break;
+    }
+    
     double pixelsPerSec = (double)((NSUInteger)self.videoSize.width * (NSUInteger)self.videoSize.height * self.videoFrameRate);
     _videoMinBitRate = (NSUInteger)ceil(bitsPerPixelMin * pixelsPerSec);
     _videoMaxBitRate = (NSUInteger)floor(bitsPerPixelMax * pixelsPerSec);
-    _videoBitRate = (NSUInteger)ceil((double)(_videoMinBitRate + _videoMaxBitRate) / 2.0);
+    _videoBitRate = _videoMinBitRate; //start at 0.1  //(NSUInteger)ceil((double)(_videoMinBitRate + _videoMaxBitRate) / 2.0);
 }
 
 
@@ -386,7 +413,7 @@
     other.outputImageOrientation = _outputImageOrientation;
     other.autorotate = _autorotate;
     //other.videoFrameRate = _videoFrameRate;
-    other.videoMaxKeyframeInterval = _videoMaxKeyframeInterval;
+//    other.videoMaxKeyframeInterval = _videoMaxKeyframeInterval;
     other.videoBitRate = _videoBitRate;
     //other.videoMinBitRate = _videoMinBitRate;
     //other.videoMinBitRate = _videoMaxBitRate;

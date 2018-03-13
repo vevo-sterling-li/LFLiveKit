@@ -26,6 +26,8 @@ NSString *const kGPUImageCropFragmentShaderString =  SHADER_STRING
 );
 #endif
 
+
+
 @interface GPUImageCropFilter ()
 
 - (void)calculateCropTextureCoordinates;

@@ -26,5 +26,9 @@
 - (nullable instancetype)initWithVideoStreamConfiguration:(nullable LFLiveVideoConfiguration *)configuration;
 - (void)setDelegate:(nullable id<LFVideoEncodingDelegate>)delegate;
 - (void)stopEncoder;
+
+///invoke to force reset the compression session
+-(void)resetCompressionSession;
+
 @end
 

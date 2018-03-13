@@ -14,8 +14,9 @@
 
 
 @protocol LFStreamSocket;
-@protocol LFStreamSocketDelegate <NSObject>
 
+
+@protocol LFStreamSocketDelegate <NSObject>
 /** callback buffer current status (回调当前缓冲区情况，可实现相关切换帧率 码率等策略)*/
 - (void)socketBufferStatus:(nullable id <LFStreamSocket>)socket status:(LFLiveBuffferState)status;
 /** callback socket current status (回调当前网络情况) */
@@ -26,6 +27,8 @@
 /** callback debugInfo */
 - (void)socketDebug:(nullable id <LFStreamSocket>)socket debugInfo:(nullable LFLiveDebug *)debugInfo;
 @end
+
+
 
 @protocol LFStreamSocket <NSObject>
 - (void)start;

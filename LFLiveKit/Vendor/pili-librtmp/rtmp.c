@@ -1429,7 +1429,6 @@ WriteN(PILI_RTMP *r, const char *buffer, int n, RTMPError *error) {
     
     while (n > 0) {
         int nBytes;
-        
 //        if (gWriteCounter == 60000) {
 //            nBytes = -1;
 //        }
@@ -2923,7 +2922,7 @@ int PILI_RTMP_ReadPacket(PILI_RTMP *r, PILI_RTMPPacket *packet) {
         }
     }
 
-    RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)hbuf, hSize);
+    RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)hbuf, hSize);
 
     if (packet->m_nBodySize > 0 && packet->m_body == NULL) {
         if (!PILI_RTMPPacket_Alloc(packet, packet->m_nBodySize)) {
@@ -2953,7 +2952,7 @@ int PILI_RTMP_ReadPacket(PILI_RTMP *r, PILI_RTMPPacket *packet) {
         return FALSE;
     }
 
-    RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)packet->m_body + packet->m_nBytesRead, nChunk);
+    RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)packet->m_body + packet->m_nBytesRead, nChunk);
 
     packet->m_nBytesRead += nChunk;
 
@@ -3111,10 +3110,10 @@ int PILI_RTMP_SendChunk(PILI_RTMP *r, PILI_RTMPChunk *chunk, RTMPError *error) {
 
     RTMP_Log(RTMP_LOGDEBUG2, "%s: fd=%d, size=%d", __FUNCTION__, r->m_sb.sb_socket,
              chunk->c_chunkSize);
-    RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)chunk->c_header, chunk->c_headerSize);
+    RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)chunk->c_header, chunk->c_headerSize);
     if (chunk->c_chunkSize) {
         char *ptr = chunk->c_chunk - chunk->c_headerSize;
-        RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)chunk->c_chunk, chunk->c_chunkSize);
+        RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)chunk->c_chunk, chunk->c_chunkSize);
         /* save header bytes we're about to overwrite */
         memcpy(hbuf, ptr, chunk->c_headerSize);
         memcpy(ptr, chunk->c_header, chunk->c_headerSize);
@@ -3246,8 +3245,8 @@ int PILI_RTMP_SendPacket(PILI_RTMP *r, PILI_RTMPPacket *packet, int queue, RTMPE
         if (nSize < nChunkSize)
             nChunkSize = nSize;
 
-        RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)header, hSize);
-        RTMP_LogHexString(RTMP_LOGDEBUG2, (uint8_t *)buffer, nChunkSize);
+        RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)header, hSize);
+        RTMP_LogHexString(RTMP_LOGDEBUG3, (uint8_t *)buffer, nChunkSize);
         if (tbuf) {
             memcpy(toff, header, nChunkSize + hSize);
             toff += nChunkSize + hSize;
@@ -3892,13 +3891,13 @@ static int
 
 	     uint32_t ts = AMF_DecodeInt24(packetBody+2); /* composition time */
 	     int32_t cts = (ts+0xff800000)^0xff800000;
-	     RTMP_Log(RTMP_LOGDEBUG, "cts  : %d\n", cts);
+	     RTMP_Log(RTMP_LOGDEBUG, "cts  : %d", cts);
 
 	     nTimeStamp -= cts;
 	     /* get rid of the composition time */
 	     CRTMP::EncodeInt24(packetBody+2, 0);
 	     }
-	     RTMP_Log(RTMP_LOGDEBUG, "VIDEO: nTimeStamp: 0x%08X (%d)\n", nTimeStamp, nTimeStamp);
+	     RTMP_Log(RTMP_LOGDEBUG, "VIDEO: nTimeStamp: 0x%08X (%d)", nTimeStamp, nTimeStamp);
 	     }
 #endif
 

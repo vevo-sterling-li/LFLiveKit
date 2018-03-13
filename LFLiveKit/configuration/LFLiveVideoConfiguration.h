@@ -60,9 +60,10 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 /// @name Attribute
 ///=============================================================================
 /// 视频的分辨率，宽高务必设定为 2 的倍数，否则解码播放时可能出现绿边(这个videoSizeRespectingAspectRatio设置为YES则可能会改变)
+//right after initialization, videoSize is the capture output size
 @property (nonatomic, assign) CGSize videoSize;
 
-/// 输出图像是否等比例,默认为NO
+/// 输出图像是否等比例,默认为NO (The output image is the same proportion, the default is NO)
 @property (nonatomic, assign) BOOL videoSizeRespectingAspectRatio;
 
 /// 视频输出方向
@@ -72,28 +73,33 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 @property (nonatomic, assign) BOOL autorotate;
 
 /// 视频的帧率，即 fps
-@property (nonatomic, assign) NSUInteger videoFrameRate;
+//JK: we don't support changing frame rate, so made this property readonly
+@property (nonatomic, readonly) NSUInteger videoFrameRate;
 
 /// 视频的最大帧率，即 fps
-@property (nonatomic, assign) NSUInteger videoMaxFrameRate;
+//@property (nonatomic, assign) NSUInteger videoMaxFrameRate;
 
 /// 视频的最小帧率，即 fps
-@property (nonatomic, assign) NSUInteger videoMinFrameRate;
+//@property (nonatomic, assign) NSUInteger videoMinFrameRate;
 
 /// 最大关键帧间隔，可设定为 fps 的2倍，影响一个 gop 的大小
-@property (nonatomic, assign) NSUInteger videoMaxKeyframeInterval;
+//key frame max frame interval, set to 0 to let VTCompressionSession decide
+@property (nonatomic, readonly) NSUInteger videoMaxKeyframeInterval;
+//key frame max interval duration, set to 0 to let VTCompressionSession decide
+@property (nonatomic, readonly) NSUInteger videoMaxKeyframeIntervalDuration;
 
 /// 视频的码率，单位是 bps
 @property (nonatomic, assign) NSUInteger videoBitRate;
 
 /// 视频的最大码率，单位是 bps
-@property (nonatomic, assign) NSUInteger videoMaxBitRate;
+@property (nonatomic, readonly) NSUInteger videoMaxBitRate;
 
 /// 视频的最小码率，单位是 bps
-@property (nonatomic, assign) NSUInteger videoMinBitRate;
+@property (nonatomic, readonly) NSUInteger videoMinBitRate;
 
 ///< 分辨率
-@property (nonatomic, assign) LFLiveVideoSessionPreset sessionPreset;
+//JK: made readonly because sessionPreset must be correlated with videoQuality, video size, bitrates, etc.
+@property (nonatomic, assign, readonly) LFLiveVideoSessionPreset sessionPreset;
 
 ///< ≈sde3分辨率
 @property (nonatomic, assign, readonly, nonnull) NSString *avSessionPreset;
@@ -101,6 +107,7 @@ typedef NS_ENUM (NSUInteger, LFLiveVideoQuality){
 ///< 是否是横屏
 @property (nonatomic, assign, readonly) BOOL landscape;
 
+///not all settings available on all devices, so sets to highest/closest quality/resolution supported by front facing camera. Changing videoQuality also changes sessionPreset, videoFrameRate, bitrate and min/max bitrate, videoSize, videoMaxKeyFrameInterval
 @property (nonatomic, assign) LFLiveVideoQuality videoQuality;
 
 - (void)refreshVideoSize;

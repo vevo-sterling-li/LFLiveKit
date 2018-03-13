@@ -46,7 +46,7 @@
 @synthesize zoomScale = _zoomScale;
 @synthesize preView = _preView;
 
-
+//-----------------------------------------------------------------------------------------------------
 #pragma mark -- LifeCycle
 - (instancetype)initWithVideoConfiguration:(LFLiveVideoConfiguration *)configuration {
     if (self = [super init]) {
@@ -102,11 +102,46 @@
     }
 }
 
-#pragma mark -- Setter Getter
 
-- (GPUImageVideoCamera *)videoCamera{
+//-----------------------------------------------------------------------------------------------------
+-(void)setNewVideoConfiguration:(nonnull LFLiveVideoConfiguration*)newConfiguration {
+    //only update if there is a video quality change
+    if (newConfiguration == _configuration || newConfiguration.videoQuality == _configuration.videoQuality)
+        return;
+
+    //enforce no change in output image orientation or frame rate
+    if (newConfiguration.outputImageOrientation != _configuration.outputImageOrientation) {
+        [NSException raise:@"Illegal Vidoe Configuration" format:@"LFVideoCapture, when updating video configration, cannot change outputImageOrientation"];
+        return;
+    }
+    if (newConfiguration.videoFrameRate != _configuration.videoFrameRate) {
+        [NSException raise:@"Illegal Vidoe Configuration" format:@"LFVideoCapture, when updating video configration, cannot change frame rate"];
+        return;
+    }
+    
+    fprintf(stdout,"[LFVideoCapture/setNewVideoConfiguration:]...new frame size=%dx%d\n",(int)newConfiguration.videoSize.width,(int)newConfiguration.videoSize.height);
+    _configuration = newConfiguration;
+    
+    //update resolution in OpenGL renderer
+    runAsynchronouslyOnVideoProcessingQueue(^{
+        _videoCamera.outputFrameSize_landscape = _configuration.videoSize;
+        
+        //changing video size doesn't require reloading the filter, but do have to update filter sizes across the filter chain
+        [self.filter forceProcessingAtSize:self.configuration.videoSize];
+        [self.output forceProcessingAtSize:self.configuration.videoSize];
+        [self.blendFilter forceProcessingAtSize:self.configuration.videoSize];
+        [self.uiElementInput forceProcessingAtSize:self.configuration.videoSize];
+        [self.flipFilter forceProcessingAtSize:self.configuration.videoSize];
+    });
+}
+
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark -- Setter Getter
+- (GPUImageVideoCamera *)videoCamera {
     if(!_videoCamera){
-        _videoCamera = [[GPUImageVideoCamera alloc] initWithSessionPreset:_configuration.avSessionPreset cameraPosition:AVCaptureDevicePositionFront];
+        _videoCamera = [[GPUImageVideoCamera alloc] init720pSessionPresetWithOutputSize:_configuration.videoSize cameraPosition:AVCaptureDevicePositionFront];
+//        _videoCamera = [[GPUImageVideoCamera alloc] initWithSessionPreset:_configuration.avSessionPreset cameraPosition:AVCaptureDevicePositionFront];
         _videoCamera.outputImageOrientation = _configuration.outputImageOrientation;
         _videoCamera.horizontallyMirrorFrontFacingCamera = NO;
         _videoCamera.horizontallyMirrorRearFacingCamera = NO;
@@ -134,7 +169,6 @@
         if(self.saveLocalVideo) [self.movieWriter startRecording];
     }
 }
-
 
 - (void)setPreView:(UIView *)preView {
     _preView = preView;
@@ -318,7 +352,10 @@
     return _movieWriter;
 }
 
-#pragma mark -- Custom Method
+
+//-----------------------------------------------------------------------------------------------------
+//end of the filter chain: forward finished pixel buffer to delegate
+#pragma mark - output
 - (void)processVideo:(GPUImageOutput *)output {
     __weak typeof(self) _self = self;
     @autoreleasepool {
@@ -330,6 +367,9 @@
     }
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - build filter chain
 - (void)reloadFilter{
     [self.filter removeAllTargets];
     [self.blendFilter removeAllTargets];
@@ -355,21 +395,22 @@
     
     [_flipFilter setInputRotation:kGPUImageFlipHorizonal atIndex:0];
 
-    
-    /// 调节镜像
+    /// 调节镜像 (adjust the mirror)
     [self reloadMirror];
-    
-    // 480*640 比例为4:3  强制转换为16:9
-    if([self.configuration.avSessionPreset isEqualToString:AVCaptureSessionPreset640x480]){
-        CGRect cropRect = self.configuration.landscape ? CGRectMake(0, 0.125, 1, 0.75) : CGRectMake(0.125, 0, 0.75, 1);
-        self.cropfilter = [[GPUImageCropFilter alloc] initWithCropRegion:cropRect];
-        [self.videoCamera addTarget:self.cropfilter];
-        [self.cropfilter addTarget:self.filter];
-    }else{
+
+    //note: in order to support video configuration changes on the fly, _videoCamera is always configured with the ..1280x720 capture session preset, and the videoSize property of _configuration is the output frame size that is always a 16x9.  Since all videoSizes from LFLiveVideoConfiguration are 16x9, and we don't allway changing the videoSize property, we no longer need a crop filter
+    // 480*640 比例为4:3  强制转换为16:9 (if the ratio is 4:3 cast to 16:9)
+//    if ([self.configuration.avSessionPreset isEqualToString:AVCaptureSessionPreset640x480]) {
+//    if ([self.videoCamera.captureSessionPreset isEqualToString:AVCaptureSessionPreset640x480]) {
+//        CGRect cropRect = self.configuration.landscape ? CGRectMake(0, 0.125, 1, 0.75) : CGRectMake(0.125, 0, 0.75, 1);
+//        self.cropfilter = [[GPUImageCropFilter alloc] initWithCropRegion:cropRect];
+//        [self.videoCamera addTarget:self.cropfilter];
+//        [self.cropfilter addTarget:self.filter];
+//    } else {
         [self.videoCamera addTarget:self.filter];
-    }
+//    }
     
-    // 添加水印
+    // 添加水印 (add watermark)
     if (self.watermarkView) {
         [self.filter addTarget:self.blendFilter];
         [self.uiElementInput addTarget:self.blendFilter];
@@ -415,6 +456,8 @@
     
 }
 
+
+//-----------------------------------------------------------------------------------------------------
 - (void)reloadMirror{
     if([self shouldFlipHorizontally]){
         self.videoCamera.horizontallyMirrorFrontFacingCamera = YES;
@@ -427,7 +470,9 @@
     return self.mirror && self.captureDevicePosition == AVCaptureDevicePositionFront;
 }
 
-#pragma mark Notification
+
+//-----------------------------------------------------------------------------------------------------
+#pragma mark - notifications
 - (void)willResignActive:(NSNotification *)notification {
     _fullyBackground = NO;
 }
@@ -449,6 +494,7 @@
     _fullyBackground = NO;
 }
 
+//NOTE: currently disabled
 - (void)statusBarChanged:(NSNotification *)notification {
     NSLog(@"UIApplicationWillChangeStatusBarOrientationNotification. UserInfo: %@", notification.userInfo);
     UIInterfaceOrientation statusBar = [[UIApplication sharedApplication] statusBarOrientation];
